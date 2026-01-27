@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediGarden | Family Health Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Firebase (compat) SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet" />
+
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2D9F75">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%232D9F75' width='180' height='180'/><text x='50%' y='50%' font-size='80' fill='white' text-anchor='middle' dy='.3em'>🌱</text></svg>">
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        .garden-soil {
+            background: linear-gradient(180deg, #8B7355 0%, #654321 100%);
+        }
+
+        .garden-plant {
+            animation: sway 3s ease-in-out infinite;
+        }
+
+        @keyframes sway {
+
+            0%,
+            100% {
+                transform: rotate(-1deg);
+            }
+
+            50% {
+                transform: rotate(1deg);
+            }
+        }
+
+        .achievement-card {
+            min-width: 180px;
+        }
+
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .reminder-panel {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            z-index: 120;
+            width: 320px;
+            max-width: calc(100% - 36px);
+        }
+
+        .alert-badge {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .notification-sound {
+            display: none;
+        }
+    </style>
+</head>
+
+<body x-data="app()" x-init="init()">
+
+    <!-- Audio for notification sound -->
+    <audio id="notificationSound" class="notification-sound">
+        <source src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAAA="
+            type="audio/wav">
+    </audio>
+
+    <!-- LOGIN SCREEN -->
+    <template x-if="!isLoggedIn && currentPage === 'login'">
+        <div class="min-h-screen bg-gradient-to-br from-[#2D9F75] to-[#1a5f47] flex items-center justify-center p-4">
+            <div class="w-full max-w-md">
+                <div class="text-center mb-8">
+                    <div class="text-6xl mb-4">🌱</div>
+                    <h1 class="text-4xl font-bold text-white mb-2">MediGarden</h1>
+                    <p class="text-green-100">Family Health Management System</p>
+                </div>
+
+                <div class="bg-white rounded-3xl shadow-2xl p-8">
+                    <div class="flex gap-2 mb-6">
+                        <button @click="loginTab = 'signin'"
+                            :class="loginTab === 'signin' ? 'bg-[#2D9F75] text-white' : 'bg-gray-100'"
+                            class="flex-1 py-2 rounded-lg font-semibold transition">Sign In</button>
+                        <button @click="loginTab = 'signup'"
+                            :class="loginTab === 'signup' ? 'bg-[#2D9F75] text-white' : 'bg-gray-100'"
+                            class="flex-1 py-2 rounded-lg font-semibold transition">Sign Up</button>
+                    </div>
+
+                    <!-- Sign In Tab -->
+                    <div x-show="loginTab === 'signin'" class="space-y-4">
+                        <div>
+                            <label class="text-sm font-semibold text-gray-700">Email</label>
+                            <input x-model="auth.email" type="email" placeholder="you@example.com"
+                                class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-sm font-semibold text-gray-700">Password</label>
+                            <input x-model="auth.password" type="password" placeholder="••••••••"
+                                class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                        </div>
+                        <button @click="signIn()"
+                            class="w-full bg-[#2D9F75] text-white py-3 rounded-lg font-bold hover:bg-[#258562] transition">Sign
+                            In</button>
+                        <button @click="signInWithGoogle()"
+                            class="w-full border-2 border-gray-300 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-gray-50 transition">
+                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5">
+                            Sign in with Google
+                        </button>
+                    </div>
+
+                    <!-- Sign Up Tab -->
+                    <div x-show="loginTab === 'signup'" class="space-y-4">
+                        <div>
+                            <label class="text-sm font-semibold text-gray-700">Name</label>
+                            <input x-model="auth.displayName" type="text" placeholder="Your Name"
+                                class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-sm font-semibold text-gray-700">Email</label>
+                            <input x-model="auth.email" type="email" placeholder="you@example.com"
+                                class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-sm font-semibold text-gray-700">Password</label>
+                            <input x-model="auth.password" type="password" placeholder="••••••••"
+                                class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                        </div>
+                        <button @click="signUp()"
+                            class="w-full bg-[#2D9F75] text-white py-3 rounded-lg font-bold hover:bg-[#258562] transition">Create
+                            Account</button>
+                    </div>
+                </div>
+
+                <p class="text-center text-green-100 mt-6">🏥 Manage medications for your entire family</p>
+            </div>
+        </div>
+    </template>
+
+    <!-- MAIN APP -->
+    <template x-if="isLoggedIn && currentPage !== 'login'">
+        <div class="min-h-screen bg-gradient-to-b from-blue-50 to-green-50">
+            <!-- Navigation -->
+            <nav class="bg-[#2D9F75] text-white px-6 py-4 sticky top-0 z-50 shadow-lg">
+                <div class="max-w-7xl mx-auto flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <div class="text-3xl">🌱</div>
+                        <div>
+                            <h1 class="font-bold text-xl">MediGarden</h1>
+                            <p class="text-xs opacity-80" x-text="`Hey, ${displayName}! 👋`"></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 overflow-x-auto">
+                        <button @click="currentPage = 'dashboard'"
+                            :class="currentPage === 'dashboard' ? 'border-b-2 border-white' : 'opacity-70'"
+                            class="font-semibold transition whitespace-nowrap">📊 Dashboard</button>
+                        <button @click="currentPage = 'garden'"
+                            :class="currentPage === 'garden' ? 'border-b-2 border-white' : 'opacity-70'"
+                            class="font-semibold transition whitespace-nowrap">🌳 Garden</button>
+                        <button @click="currentPage = 'family'"
+                            :class="currentPage === 'family' ? 'border-b-2 border-white' : 'opacity-70'"
+                            class="font-semibold transition flex items-center gap-1 whitespace-nowrap">👥 <span
+                                class="bg-red-500 text-xs px-2 py-1 rounded-full"
+                                x-text="familyMembers.length"></span></button>
+                        <button @click="currentPage = 'alerts'"
+                            :class="currentPage === 'alerts' ? 'border-b-2 border-white' : 'opacity-70'"
+                            class="font-semibold transition relative whitespace-nowrap">🔔 <span
+                                class="alert-badge absolute -top-2 -right-2 bg-red-600 text-xs px-2 py-1 rounded-full"
+                                x-show="familyAlerts.length > 0" x-text="familyAlerts.length"></span></button>
+                        <button @click="currentPage = 'profile'"
+                            :class="currentPage === 'profile' ? 'border-b-2 border-white' : 'opacity-70'"
+                            class="font-semibold transition whitespace-nowrap">👤 Profile</button>
+                        <button @click="logout()"
+                            class="px-4 py-2 bg-red-500 rounded-lg font-semibold hover:bg-red-600 whitespace-nowrap">Logout</button>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- DASHBOARD PAGE -->
+            <template x-if="currentPage === 'dashboard'">
+                <main class="max-w-7xl mx-auto p-6 space-y-8">
+                    <!-- Summary Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-white p-6 rounded-2xl shadow-lg border-l-4 border-green-500">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-600 text-sm font-semibold">Today's Medications</p>
+                                    <p class="text-4xl font-bold text-green-600 mt-2"><span
+                                            x-text="todayTaken"></span>/<span x-text="todayTotal"></span></p>
+                                </div>
+                                <div class="text-4xl">💊</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-2xl shadow-lg border-l-4 border-orange-500">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-600 text-sm font-semibold">Current Streak</p>
+                                    <p class="text-4xl font-bold text-orange-600 mt-2" x-text="streak"></p>
+                                </div>
+                                <div class="text-4xl">🔥</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-2xl shadow-lg border-l-4 border-blue-500">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-600 text-sm font-semibold">This Week</p>
+                                    <p class="text-4xl font-bold text-blue-600 mt-2" x-text="weekAdherence + '%'"></p>
+                                </div>
+                                <div class="text-4xl">📈</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-2xl shadow-lg border-l-4 border-purple-500">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-600 text-sm font-semibold">Family Members</p>
+                                    <p class="text-4xl font-bold text-purple-600 mt-2"
+                                        x-text="familyMembers.length + 1"></p>
+                                </div>
+                                <div class="text-4xl">👥</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Today's Medications -->
+                    <div class="bg-white rounded-2xl shadow-lg p-8">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-bold">Today's Medications</h2>
+                            <button @click="openAdd()"
+                                class="bg-[#2D9F75] text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-[#258562]">
+                                <span>+</span> Add Medication
+                            </button>
+                        </div>
+                        <template x-if="meds.length === 0">
+                            <div class="text-center py-8 text-gray-500">
+                                <p class="text-lg">No medications yet. Add one to get started!</p>
+                            </div>
+                        </template>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <template x-for="med in getTodaysMeds()" :key="med.id">
+                                <div :class="med.taken ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'"
+                                    class="p-4 rounded-lg border-2 flex justify-between items-center">
+                                    <div class="flex gap-4 items-center flex-1">
+                                        <div class="text-3xl">💊</div>
+                                        <div class="flex-1 min-w-0">
+                                            <h4 class="font-bold text-lg" x-text="med.name"></h4>
+                                            <p class="text-sm text-gray-500" x-text="med.time"></p>
+                                            <p class="text-xs text-gray-400" x-text="med.dosage || 'Dosage: N/A'"></p>
+                                            <p class="text-xs text-purple-600 mt-1"
+                                                x-text="'Frequency: ' + getFrequencyLabel(med.frequency)"></p>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button @click="openEditMed(med)"
+                                            class="px-3 py-2 text-yellow-600 border border-yellow-300 rounded-lg text-sm font-bold hover:bg-yellow-50">✏️</button>
+                                        <button @click="deleteMedication(med.id)"
+                                            class="px-3 py-2 text-red-600 border border-red-300 rounded-lg text-sm font-bold hover:bg-red-50">🗑️</button>
+                                        <button @click="takeMedicationById(med.id)"
+                                            :class="med.taken ? 'bg-green-500 cursor-default' : 'bg-[#2D9F75] hover:bg-[#258562]'"
+                                            class="px-6 py-2 text-white rounded-lg font-bold"
+                                            x-text="med.taken ? '✓ Done' : 'Take Now'"></button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Family Health Overview -->
+                    <div class="bg-white rounded-2xl shadow-lg p-8">
+                        <h2 class="text-2xl font-bold mb-6">Family Health Overview</h2>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <template x-for="member in familyMembers" :key="member.uid">
+                                <div class="border-2 border-purple-200 rounded-lg p-4 bg-purple-50 cursor-pointer hover:shadow-lg transition"
+                                    @click="viewMemberGarden(member.uid)">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <div>
+                                            <h4 class="font-bold text-lg" x-text="member.displayName || member.email">
+                                            </h4>
+                                            <p class="text-xs text-gray-500"
+                                                x-text="member.relationship || 'Family Member'"></p>
+                                        </div>
+                                        <div class="text-2xl" x-text="getMemberEmoji(member.uid)"></div>
+                                    </div>
+                                    <div class="space-y-2 text-sm">
+                                        <div class="flex justify-between">
+                                            <span>Adherence:</span>
+                                            <span class="font-bold"
+                                                x-text="getMemberAdherence(member.uid) + '%'"></span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span>Streak:</span>
+                                            <span class="font-bold"
+                                                x-text="getMemberStreak(member.uid) + ' days'"></span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span>Status:</span>
+                                            <span class="font-bold"
+                                                :class="getMemberStatus(member.uid) === 'On Track' ? 'text-green-600' : 'text-red-600'"
+                                                x-text="getMemberStatus(member.uid)"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </main>
+            </template>
+
+            <!-- GARDEN PAGE -->
+            <template x-if="currentPage === 'garden'">
+                <main class="max-w-7xl mx-auto p-6">
+                    <div class="bg-white rounded-2xl shadow-lg p-8 mb-6">
+                        <h2 class="text-3xl font-bold mb-4">Your Garden 🌳</h2>
+                        <p class="text-gray-600 mb-6">Watch your garden grow as you take your medications on time!</p>
+
+                        <!-- Garden Visualization -->
+                        <div class="garden-soil rounded-2xl p-12 text-center relative overflow-hidden min-h-96">
+                            <div class="absolute inset-0 opacity-10">
+                                <div class="absolute top-10 left-10 text-6xl garden-plant">🌱</div>
+                                <div class="absolute top-20 right-20 text-5xl garden-plant" style="animation-delay: 1s">
+                                    🌿</div>
+                                <div class="absolute bottom-10 left-1/3 text-6xl garden-plant"
+                                    style="animation-delay: 2s">🌻</div>
+                            </div>
+
+                            <div class="relative z-10">
+                                <template x-if="weekAdherence >= 90">
+                                    <div>
+                                        <div class="text-8xl mb-4 garden-plant">🌳</div>
+                                        <h3 class="text-3xl font-bold text-white">Amazing! Your garden is flourishing!
+                                        </h3>
+                                    </div>
+                                </template>
+                                <template x-if="weekAdherence >= 70 && weekAdherence < 90">
+                                    <div>
+                                        <div class="text-7xl mb-4 garden-plant">🌲</div>
+                                        <h3 class="text-3xl font-bold text-white">Great progress! Keep it up!</h3>
+                                    </div>
+                                </template>
+                                <template x-if="weekAdherence >= 50 && weekAdherence < 70">
+                                    <div>
+                                        <div class="text-6xl mb-4 garden-plant">🌱</div>
+                                        <h3 class="text-3xl font-bold text-white">Your garden is growing. Stay
+                                            consistent!</h3>
+                                    </div>
+                                </template>
+                                <template x-if="weekAdherence < 50">
+                                    <div>
+                                        <div class="text-5xl mb-4">🌾</div>
+                                        <h3 class="text-3xl font-bold text-white">Take your meds to water your garden!
+                                        </h3>
+                                    </div>
+                                </template>
+
+                                <p class="text-white text-xl mt-6">Weekly Adherence: <span class="font-bold text-2xl"
+                                        x-text="weekAdherence + '%'"></span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Medication History Calendar -->
+                    <div class="bg-white rounded-2xl shadow-lg p-8">
+                        <h3 class="text-2xl font-bold mb-6">Medication History</h3>
+                        <div class="flex justify-between items-center mb-6">
+                            <button @click="offsetMonth(-1)" class="px-4 py-2 bg-gray-200 rounded-lg">←
+                                Previous</button>
+                            <h4 class="text-xl font-bold" x-text="currentMonthLabel"></h4>
+                            <button @click="offsetMonth(1)" class="px-4 py-2 bg-gray-200 rounded-lg">Next →</button>
+                        </div>
+
+                        <div class="grid grid-cols-7 gap-2">
+                            <template x-for="day in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']">
+                                <div class="text-center font-bold text-gray-600" x-text="day"></div>
+                            </template>
+
+                            <template x-for="offset in calendarDays">
+                                <div :class="offset.markerClass + ' p-3 rounded-lg text-center font-semibold'">
+                                    <div x-text="offset.day"></div>
+                                    <div class="text-xs" x-text="offset.markerText"></div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="mt-6 grid grid-cols-3 gap-4">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded bg-green-500"></div>
+                                <span>All Taken</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded bg-yellow-500"></div>
+                                <span>Partial</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded bg-red-500"></div>
+                                <span>Missed</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Garden Stats -->
+                    <div class="bg-white rounded-2xl shadow-lg p-8 mt-8">
+                        <h3 class="text-2xl font-bold mb-6">Your Garden Stats</h3>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div class="text-center p-4 bg-green-50 rounded-lg">
+                                <p class="text-3xl">🌿</p>
+                                <p class="text-sm text-gray-600 mt-2">Total Days Tracked</p>
+                                <p class="text-2xl font-bold" x-text="Object.keys(history).length"></p>
+                            </div>
+                            <div class="text-center p-4 bg-blue-50 rounded-lg">
+                                <p class="text-3xl">💊</p>
+                                <p class="text-sm text-gray-600 mt-2">Total Doses Taken</p>
+                                <p class="text-2xl font-bold" x-text="totalDoses"></p>
+                            </div>
+                            <div class="text-center p-4 bg-purple-50 rounded-lg">
+                                <p class="text-3xl">🔥</p>
+                                <p class="text-sm text-gray-600 mt-2">Current Streak</p>
+                                <p class="text-2xl font-bold" x-text="streak + ' days'"></p>
+                            </div>
+                            <div class="text-center p-4 bg-orange-50 rounded-lg">
+                                <p class="text-3xl">📊</p>
+                                <p class="text-sm text-gray-600 mt-2">Overall Adherence</p>
+                                <p class="text-2xl font-bold" x-text="Math.round(healthScore) + '%'"></p>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </template>
+
+            <!-- FAMILY PAGE -->
+            <template x-if="currentPage === 'family'">
+                <main class="max-w-7xl mx-auto p-6 space-y-8">
+                    <div class="grid lg:grid-cols-3 gap-8">
+                        <!-- Add Family Member Card -->
+                        <div class="lg:col-span-1">
+                            <div class="bg-white rounded-2xl shadow-lg p-8 sticky top-24 space-y-6">
+                                <div>
+                                    <h3 class="text-2xl font-bold mb-4">👨‍👩‍👧‍👦 Family Circle</h3>
+
+                                    <div>
+                                        <label class="text-sm font-semibold text-gray-700">Your Share Code</label>
+                                        <div class="flex gap-2 mt-2">
+                                            <input readonly x-model="uid"
+                                                class="flex-1 px-3 py-2 border rounded-lg bg-gray-50 font-mono text-sm" />
+                                            <button @click="copyShareCode()"
+                                                class="px-4 py-2 bg-[#2D9F75] text-white rounded-lg font-bold">📋</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr>
+
+                                <div>
+                                    <label class="text-sm font-semibold text-gray-700">Add Family Member</label>
+                                    <p class="text-xs text-gray-500 mb-3">Ask them for their Share Code</p>
+                                    <div class="flex gap-2 mt-2">
+                                        <input x-model="inviteUid" placeholder="Enter code"
+                                            class="flex-1 px-3 py-2 border rounded-lg font-mono text-sm" />
+                                        <button @click="addFamilyMember()"
+                                            class="px-4 py-2 bg-green-500 text-white rounded-lg font-bold">+</button>
+                                    </div>
+                                </div>
+
+                                <hr>
+
+                                <div>
+                                    <label class="text-sm font-semibold text-gray-700 mb-3 block">Set
+                                        Relationship</label>
+                                    <div class="space-y-2">
+                                        <button @click="relationshipFilter = 'all'"
+                                            :class="relationshipFilter === 'all' ? 'bg-[#2D9F75] text-white' : 'bg-gray-100'"
+                                            class="w-full py-2 rounded-lg font-semibold">All Members</button>
+                                        <button @click="relationshipFilter = 'spouse'"
+                                            :class="relationshipFilter === 'spouse' ? 'bg-blue-500 text-white' : 'bg-gray-100'"
+                                            class="w-full py-2 rounded-lg font-semibold">👰 Spouse</button>
+                                        <button @click="relationshipFilter = 'parent'"
+                                            :class="relationshipFilter === 'parent' ? 'bg-purple-500 text-white' : 'bg-gray-100'"
+                                            class="w-full py-2 rounded-lg font-semibold">👴 Parent</button>
+                                        <button @click="relationshipFilter = 'child'"
+                                            :class="relationshipFilter === 'child' ? 'bg-pink-500 text-white' : 'bg-gray-100'"
+                                            class="w-full py-2 rounded-lg font-semibold">👧 Child</button>
+                                        <button @click="relationshipFilter = 'sibling'"
+                                            :class="relationshipFilter === 'sibling' ? 'bg-yellow-500 text-white' : 'bg-gray-100'"
+                                            class="w-full py-2 rounded-lg font-semibold">👦 Sibling</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Family Members List -->
+                        <div class="lg:col-span-2">
+                            <h3 class="text-2xl font-bold mb-6">Members (<span
+                                    x-text="familyMembers.length + 1"></span>)</h3>
+
+                            <!-- Current User -->
+                            <div
+                                class="bg-gradient-to-r from-[#2D9F75] to-green-400 text-white rounded-2xl p-6 mb-4 shadow-lg">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h4 class="text-xl font-bold" x-text="displayName"></h4>
+                                        <p class="text-green-100" x-text="userEmail"></p>
+                                        <p class="text-xs mt-2 opacity-75">(You)</p>
+                                    </div>
+                                    <div class="text-4xl">😊</div>
+                                </div>
+                                <div class="mt-4 grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p class="text-xs opacity-75">Health Score</p>
+                                        <p class="text-2xl font-bold" x-text="Math.round(healthScore) + '%'"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs opacity-75">Streak</p>
+                                        <p class="text-2xl font-bold" x-text="streak + ' days'"></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Family Members -->
+                            <div class="space-y-4">
+                                <template x-for="member in familyMembers" :key="member.uid">
+                                    <div class="bg-white rounded-2xl p-6 shadow-lg border-2 border-purple-200">
+                                        <div class="flex justify-between items-start mb-4">
+                                            <div class="flex gap-4 items-start flex-1">
+                                                <div class="text-3xl" x-text="getMemberEmoji(member.uid)"></div>
+                                                <div class="flex-1">
+                                                    <h4 class="text-lg font-bold"
+                                                        x-text="member.displayName || member.email || member.uid"></h4>
+                                                    <p class="text-sm text-gray-500" x-text="member.email || ''"></p>
+                                                    <p class="text-xs text-purple-600 mt-1"
+                                                        x-text="member.relationship || 'Family Member'"></p>
+                                                </div>
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <button @click="openSetRelationship(member.uid)"
+                                                    class="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm font-bold hover:bg-blue-600">Set</button>
+                                                <button @click="removeFamilyMember(member.uid)"
+                                                    class="px-3 py-1 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600">Remove</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="grid grid-cols-3 gap-4 pt-4 border-t">
+                                            <div class="text-center">
+                                                <p class="text-xs text-gray-500">Adherence</p>
+                                                <p class="text-lg font-bold"
+                                                    x-text="getMemberAdherence(member.uid) + '%'"></p>
+                                            </div>
+                                            <div class="text-center">
+                                                <p class="text-xs text-gray-500">Streak</p>
+                                                <p class="text-lg font-bold"
+                                                    x-text="getMemberStreak(member.uid) + ' days'"></p>
+                                            </div>
+                                            <div class="text-center">
+                                                <p class="text-xs text-gray-500">Status</p>
+                                                <p class="text-lg font-bold"
+                                                    :class="getMemberStatus(member.uid) === 'On Track' ? 'text-green-600' : 'text-red-600'"
+                                                    x-text="getMemberStatus(member.uid)"></p>
+                                            </div>
+                                        </div>
+
+                                        <button @click="viewMemberGarden(member.uid)"
+                                            class="w-full mt-4 py-2 bg-green-100 text-green-700 rounded-lg font-semibold hover:bg-green-200">View
+                                            Garden 🌳</button>
+                                    </div>
+                                </template>
+
+                                <template x-if="familyMembers.length === 0">
+                                    <div class="text-center py-8 bg-gray-50 rounded-2xl">
+                                        <p class="text-gray-500 text-lg">No family members yet</p>
+                                        <p class="text-sm text-gray-400">Share your code above to invite them</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </template>
+
+            <!-- ALERTS PAGE -->
+            <template x-if="currentPage === 'alerts'">
+                <main class="max-w-7xl mx-auto p-6">
+                    <div class="bg-white rounded-2xl shadow-lg p-8">
+                        <h2 class="text-3xl font-bold mb-6">Family Alerts & Notifications 🔔</h2>
+
+                        <template x-if="familyAlerts.length === 0">
+                            <div class="text-center py-12">
+                                <p class="text-4xl mb-4">😊</p>
+                                <p class="text-gray-500 text-lg">All family members are on track!</p>
+                                <p class="text-sm text-gray-400">You'll see alerts here if anyone needs support</p>
+                            </div>
+                        </template>
+
+                        <div class="space-y-4">
+                            <template x-for="alert in familyAlerts" :key="alert.id">
+                                <div :class="alert.severity === 'critical' ? 'border-red-500 bg-red-50' : 'border-yellow-500 bg-yellow-50'"
+                                    class="border-2 rounded-lg p-4">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <h4 class="font-bold text-lg" x-text="alert.memberName"></h4>
+                                            <p class="text-gray-600 mt-1" x-text="alert.message"></p>
+                                            <p class="text-xs text-gray-500 mt-2"
+                                                x-text="'Last updated: ' + new Date(alert.timestamp).toLocaleString()">
+                                            </p>
+                                        </div>
+                                        <div :class="alert.severity === 'critical' ? 'text-red-600' : 'text-yellow-600'"
+                                            class="text-2xl" x-text="alert.severity === 'critical' ? '⚠️' : '⚡'"></div>
+                                    </div>
+                                    <div class="mt-3 flex gap-2">
+                                        <button @click="markAlertResolved(alert.id)"
+                                            class="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-bold hover:bg-green-600">Mark
+                                            Resolved</button>
+                                        <button @click="sendEncouragementMessage(alert.memberId)"
+                                            class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold hover:bg-blue-600">Send
+                                            Support Message</button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </main>
+            </template>
+
+            <!-- PROFILE PAGE -->
+            <template x-if="currentPage === 'profile'">
+                <main class="max-w-7xl mx-auto p-6">
+                    <div class="grid lg:grid-cols-3 gap-8">
+                        <!-- Profile Card -->
+                        <div class="lg:col-span-1">
+                            <div class="bg-white rounded-2xl shadow-lg p-8 sticky top-24">
+                                <div class="text-center mb-6">
+                                    <div class="text-6xl mb-4">👤</div>
+                                    <h3 class="text-2xl font-bold" x-text="displayName"></h3>
+                                    <p class="text-gray-500 text-sm mt-2" x-text="userEmail"></p>
+                                </div>
+
+                                <div
+                                    class="bg-gradient-to-r from-[#2D9F75] to-green-400 text-white rounded-lg p-4 text-center mb-6">
+                                    <p class="text-xs opacity-75">Overall Health Score</p>
+                                    <p class="text-4xl font-bold" x-text="Math.round(healthScore) + '%'"></p>
+                                </div>
+
+                                <div class="space-y-2 mb-6">
+                                    <div class="flex justify-between p-3 bg-blue-50 rounded-lg">
+                                        <span class="font-semibold">🔥 Streak</span>
+                                        <span class="font-bold text-blue-600" x-text="streak + ' days'"></span>
+                                    </div>
+                                    <div class="flex justify-between p-3 bg-green-50 rounded-lg">
+                                        <span class="font-semibold">🌳 Week Adherence</span>
+                                        <span class="font-bold text-green-600" x-text="weekAdherence + '%'"></span>
+                                    </div>
+                                    <div class="flex justify-between p-3 bg-purple-50 rounded-lg">
+                                        <span class="font-semibold">💊 Total Doses</span>
+                                        <span class="font-bold text-purple-600" x-text="totalDoses"></span>
+                                    </div>
+                                </div>
+
+                                <hr class="my-6">
+
+                                <div class="space-y-3 mb-6">
+                                    <p class="text-sm font-semibold text-gray-700 mb-3">Account Actions</p>
+                                    <button @click="currentPage = 'dashboard'"
+                                        class="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition">
+                                        ← Back to Dashboard
+                                    </button>
+                                    <button @click="logout()"
+                                        class="w-full px-4 py-3 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition">
+                                        Logout
+                                    </button>
+                                </div>
+
+                                <hr class="my-6">
+
+                                <p class="text-xs text-center text-gray-400 pt-4">Crafted with ❤️ by Korada Tanvi</p>
+                            </div>
+                        </div>
+
+                        <!-- Settings & App Installation -->
+                        <div class="lg:col-span-2 space-y-6">
+                            <!-- Settings Card -->
+                            <div class="bg-white rounded-2xl shadow-lg p-8">
+                                <h3 class="text-2xl font-bold mb-6">⚙️ Settings</h3>
+
+                                <div class="space-y-6">
+                                    <!-- Display Name -->
+                                    <div>
+                                        <label class="text-sm font-semibold text-gray-700">Display Name</label>
+                                        <input x-model="profile.displayName" placeholder="Enter your name"
+                                            class="w-full mt-2 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                                    </div>
+
+                                    <!-- Notifications -->
+                                    <div class="border-t pt-6">
+                                        <h4 class="font-semibold mb-4">🔔 Notification Settings</h4>
+                                        <button @click="requestNotificationPermission()"
+                                            class="w-full px-4 py-3 bg-blue-500 text-white rounded-lg font-bold hover:bg-blue-600 mb-2">
+                                            <span
+                                                x-text="notifPermissionText === 'granted' ? '✓ Notifications Enabled' : 'Enable Notifications'"></span>
+                                        </button>
+                                        <p class="text-xs text-gray-500 mb-4" x-text="'Status: ' + notifPermissionText">
+                                        </p>
+
+                                        <label
+                                            class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer mb-3">
+                                            <input type="checkbox" x-model="settings.medicationReminders"
+                                                class="w-5 h-5" />
+                                            <span class="font-semibold">💊 Medication Reminders</span>
+                                        </label>
+                                        <label
+                                            class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer mb-3">
+                                            <input type="checkbox" x-model="settings.familyAlerts" class="w-5 h-5" />
+                                            <span class="font-semibold">👥 Family Alerts</span>
+                                        </label>
+                                        <label class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                                            <input type="checkbox" x-model="settings.soundEnabled" class="w-5 h-5" />
+                                            <span class="font-semibold">🔊 Sound Alerts</span>
+                                        </label>
+                                    </div>
+
+                                    <!-- Save Settings -->
+                                    <button @click="updateProfile()"
+                                        class="w-full px-6 py-3 bg-[#2D9F75] text-white rounded-lg font-bold hover:bg-[#258562] transition">
+                                        💾 Save Settings
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Install as App Card -->
+                            <div class="bg-white rounded-2xl shadow-lg p-8">
+                                <h3 class="text-2xl font-bold mb-6">📲 Install as App</h3>
+
+                                <template x-if="installPrompt">
+                                    <div class="space-y-4">
+                                        <p class="text-gray-600">Install MediGarden as a native app on your device. Get
+                                            instant access, work offline, and receive notifications!</p>
+
+                                        <div
+                                            class="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-lg p-4 space-y-3">
+                                            <p class="font-semibold text-green-700">✨ App Benefits:</p>
+                                            <ul class="space-y-2 text-sm">
+                                                <li class="flex items-center gap-2">
+                                                    <span class="text-green-600">✓</span>
+                                                    <span>Native app experience with fast loading</span>
+                                                </li>
+                                                <li class="flex items-center gap-2">
+                                                    <span class="text-green-600">✓</span>
+                                                    <span>Works offline for local access</span>
+                                                </li>
+                                                <li class="flex items-center gap-2">
+                                                    <span class="text-green-600">✓</span>
+                                                    <span>Push notifications for medication reminders</span>
+                                                </li>
+                                                <li class="flex items-center gap-2">
+                                                    <span class="text-green-600">✓</span>
+                                                    <span>Instant access from home screen</span>
+                                                </li>
+                                                <li class="flex items-center gap-2">
+                                                    <span class="text-green-600">✓</span>
+                                                    <span>No app store required</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <button @click="installApp()"
+                                            class="w-full px-6 py-4 bg-gradient-to-r from-[#2D9F75] to-green-400 text-white rounded-lg font-bold hover:shadow-lg transition text-lg">
+                                            📥 Install App Now
+                                        </button>
+
+                                        <p class="text-xs text-gray-500 text-center">Quick installation • No additional
+                                            setup needed</p>
+                                    </div>
+                                </template>
+
+                                <template x-if="!installPrompt">
+                                    <div class="space-y-4">
+                                        <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                                            <p class="text-blue-700 font-semibold">ℹ️ App Installation</p>
+                                            <p class="text-sm text-blue-600 mt-2">You can install this app as follows:
+                                            </p>
+                                            <ul class="text-sm text-blue-600 mt-2 space-y-1 ml-4">
+                                                <li><strong>Android:</strong> Open Chrome menu (⋮) → "Install app"</li>
+                                                <li><strong>iOS:</strong> Tap Share → "Add to Home Screen"</li>
+                                                <li><strong>Desktop:</strong> Click the install icon in address bar</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- About Card -->
+                            <div class="bg-white rounded-2xl shadow-lg p-8">
+                                <h3 class="text-2xl font-bold mb-4">ℹ️ About MediGarden</h3>
+                                <div class="space-y-3 text-gray-600 text-sm">
+                                    <p>MediGarden is your personal family health management system designed to help you
+                                        and your loved ones stay on track with medications.</p>
+                                    <p><strong>🌱 Features:</strong></p>
+                                    <ul class="list-disc list-inside space-y-1">
+                                        <li>Track daily medications with reminders</li>
+                                        <li>Monitor family members' adherence</li>
+                                        <li>Interactive garden visualization</li>
+                                        <li>Custom medication frequencies</li>
+                                        <li>Smart health analytics</li>
+                                        <li>Push notifications & alerts</li>
+                                    </ul>
+                                    <hr class="my-4">
+                                    <p class="text-xs text-gray-500 text-center">
+                                        MediGarden v1.0 • Your trusted medication companion<br>
+                                        <strong>Crafted with ❤️ by Korada Tanvi</strong>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </template>
+
+            <!-- Member Garden View Modal -->
+            <template x-if="viewingMemberGarden">
+                <div class="fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
+                    <div @click.away="viewingMemberGarden = null"
+                        class="bg-white w-full max-w-2xl rounded-2xl p-8 relative shadow-2xl max-h-96 overflow-y-auto">
+                        <button @click="viewingMemberGarden = null"
+                            class="absolute top-4 right-4 text-gray-500 text-xl font-bold">✕</button>
+
+                        <h3 class="text-2xl font-bold mb-4"
+                            x-text="viewingMemberName + \"'s Garden 🌳\""></h3>
+
+                        <!-- Garden Visualization -->
+                        <div class="garden-soil rounded-2xl p-12 text-center relative overflow-hidden mb-6">
+                            <div class="relative z-10">
+                                <template x-if="viewingMemberAdherence >= 90">
+                                    <div>
+                                        <div class="text-8xl mb-4 garden-plant">🌳</div>
+                                        <h3 class="text-2xl font-bold text-white">Amazing! Garden is thriving!</h3>
+                                    </div>
+                                </template>
+                                <template x-if="viewingMemberAdherence >= 70 && viewingMemberAdherence < 90">
+                                    <div>
+                                        <div class="text-7xl mb-4 garden-plant">🌲</div>
+                                        <h3 class="text-2xl font-bold text-white">Great progress!</h3>
+                                    </div>
+                                </template>
+                                <template x-if="viewingMemberAdherence >= 50 && viewingMemberAdherence < 70">
+                                    <div>
+                                        <div class="text-6xl mb-4 garden-plant">🌱</div>
+                                        <h3 class="text-2xl font-bold text-white">Growing steadily</h3>
+                                    </div>
+                                </template>
+                                <template x-if="viewingMemberAdherence < 50">
+                                    <div>
+                                        <div class="text-5xl mb-4">🌾</div>
+                                        <h3 class="text-2xl font-bold text-white">Needs care!</h3>
+                                    </div>
+                                </template>
+
+                                <p class="text-white text-lg mt-4">Weekly Adherence: <span class="font-bold text-xl" x-text="viewingMemberAdherence + '
+                            %'"></span></p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="text-center p-4 bg-blue-50 rounded-lg">
+                        <p class="text-2xl">🔥</p>
+                        <p class="text-sm text-gray-600 mt-2">Streak</p>
+                        <p class="text-xl font-bold" x-text="viewingMemberStreak + ' days'"></p>
+                    </div>
+                    <div class="text-center p-4 bg-green-50 rounded-lg">
+                        <p class="text-2xl">📊</p>
+                        <p class="text-sm text-gray-600 mt-2">Status</p>
+                        <p class="text-xl font-bold"
+                            :class="viewingMemberStatus === 'On Track' ? 'text-green-600' : 'text-red-600'"
+                            x-text="viewingMemberStatus"></p>
+                    </div>
+                    <div class="text-center p-4 bg-purple-50 rounded-lg">
+                        <p class="text-2xl">💊</p>
+                        <p class="text-sm text-gray-600 mt-2">Overall</p>
+                        <p class="text-xl font-bold" x-text="viewingMemberAdherence + '%'"></p>
+                    </div>
+                </div>
+        </div>
+        </div>
+    </template>
+    </div>
+    </template>
+
+    <!-- MODALS -->
+    <div x-show="modal" class="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-6 backdrop-blur-sm"
+        x-transition>
+        <div @click.away="modal = null"
+            class="bg-white w-full max-w-md rounded-2xl p-6 relative shadow-2xl max-h-96 overflow-y-auto">
+            <button @click="modal = null" class="absolute top-4 right-4 text-gray-500 text-xl font-bold">✕</button>
+
+            <!-- Add/Edit Medication Modal -->
+            <div x-show="modal === 'add' || modal === 'edit'">
+                <h3 class="text-2xl font-bold mb-4" x-text="modal === 'add' ? 'Add Medication' : 'Edit Medication'">
+                </h3>
+                <form @submit.prevent="submitAdd" class="space-y-4">
+                    <div>
+                        <label class="text-sm font-semibold">Medication Name *</label>
+                        <input x-model="form.name" required placeholder="e.g., Aspirin"
+                            class="w-full mt-1 px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                    </div>
+
+                    <div>
+                        <label class="text-sm font-semibold">Time *</label>
+                        <input x-model="form.time" type="time" required
+                            class="w-full mt-1 px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                    </div>
+
+                    <div>
+                        <label class="text-sm font-semibold">Dosage</label>
+                        <input x-model="form.dosage" placeholder="e.g., 1 tablet, 5ml"
+                            class="w-full mt-1 px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                    </div>
+
+                    <div>
+                        <label class="text-sm font-semibold">Frequency</label>
+                        <div class="space-y-2 mt-2">
+                            <label class="flex items-center gap-2">
+                                <input type="radio" x-model="form.frequency.type" value="daily" class="w-4 h-4" />
+                                <span>Daily</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="radio" x-model="form.frequency.type" value="custom" class="w-4 h-4" />
+                                <span>Custom</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <template x-if="form.frequency.type === 'custom'">
+                        <div class="space-y-2 border-t pt-4">
+                            <div>
+                                <label class="text-sm font-semibold">Times per day</label>
+                                <input x-model.number="form.frequency.timesPerDay" type="number" min="1" max="10"
+                                    class="w-full mt-1 px-4 py-2 border-2 border-gray-200 rounded-lg" />
+                            </div>
+                            <div>
+                                <label class="text-sm font-semibold">Duration</label>
+                                <div class="flex gap-2 mt-1">
+                                    <input x-model.number="form.frequency.duration" type="number" min="1"
+                                        placeholder="30" class="flex-1 px-4 py-2 border-2 border-gray-200 rounded-lg" />
+                                    <select x-model="form.frequency.durationUnit"
+                                        class="px-4 py-2 border-2 border-gray-200 rounded-lg">
+                                        <option value="days">Days</option>
+                                        <option value="weeks">Weeks</option>
+                                        <option value="months">Months</option>
+                                        <option value="years">Years</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div>
+                        <label class="text-sm font-semibold">Notes</label>
+                        <textarea x-model="form.notes" placeholder="e.g., Take with food"
+                            class="w-full mt-1 px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none"></textarea>
+                    </div>
+
+                    <div class="flex gap-3 justify-end pt-4">
+                        <button type="button" @click="modal = null"
+                            class="px-4 py-2 border-2 border-gray-300 rounded-lg font-bold">Cancel</button>
+                        <button type="submit"
+                            class="px-4 py-2 bg-[#2D9F75] text-white rounded-lg font-bold hover:bg-[#258562]"
+                            x-text="modal === 'add' ? 'Add' : 'Update'"></button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Set Relationship Modal -->
+            <div x-show="modal === 'setRelationship'">
+                <h3 class="text-2xl font-bold mb-4">Set Relationship</h3>
+                <div class="space-y-3">
+                    <button @click="setMemberRelationship('spouse'); modal = null"
+                        class="w-full py-3 bg-blue-100 text-blue-700 rounded-lg font-bold hover:bg-blue-200">👰
+                        Spouse</button>
+                    <button @click="setMemberRelationship('parent'); modal = null"
+                        class="w-full py-3 bg-purple-100 text-purple-700 rounded-lg font-bold hover:bg-purple-200">👴
+                        Parent</button>
+                    <button @click="setMemberRelationship('child'); modal = null"
+                        class="w-full py-3 bg-pink-100 text-pink-700 rounded-lg font-bold hover:bg-pink-200">👧
+                        Child</button>
+                    <button @click="setMemberRelationship('sibling'); modal = null"
+                        class="w-full py-3 bg-yellow-100 text-yellow-700 rounded-lg font-bold hover:bg-yellow-200">👦
+                        Sibling</button>
+                    <button @click="setMemberRelationship('friend'); modal = null"
+                        class="w-full py-3 bg-green-100 text-green-700 rounded-lg font-bold hover:bg-green-200">👫
+                        Friend</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Reminders -->
+    <div class="reminder-panel" x-show="inAppReminders.length > 0" x-transition>
+        <template x-for="r in inAppReminders" :key="r.medId">
+            <div class="bg-white p-4 rounded-lg mb-3 shadow-lg border-l-4 border-green-500">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="font-bold text-lg" x-text="r.name"></div>
+                        <div class="text-xs text-gray-400" x-text="r.time"></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="handleReminderYes(r)"
+                            class="px-3 py-1 bg-green-500 text-white rounded font-bold text-sm">✓ Taken</button>
+                        <button @click="handleReminderMissed(r)"
+                            class="px-3 py-1 bg-red-500 text-white rounded font-bold text-sm">✕ Missed</button>
+                        <button @click="snoozeReminder(r, 10)" class="px-3 py-1 border rounded font-bold text-sm">⏰
+                            Snooze</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- PWA Manifest & Service Worker -->
+    <script>
+        const manifest = {
+            name: "MediGarden - Family Health Management",
+            short_name: "MediGarden",
+            description: "Manage medications for your entire family",
+            start_url: "/",
+            display: "standalone",
+            background_color: "#ffffff",
+            theme_color: "#2D9F75",
+            scope: "/",
+            icons: [
+                {
+                    src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%232D9F75' width='192' height='192'/><text x='50%' y='50%' font-size='100' fill='white' text-anchor='middle' dy='.3em'>🌱</text></svg>",
+                    sizes: "192x192",
+                    type: "image/svg+xml",
+                    purpose: "any"
+                },
+                {
+                    src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%232D9F75' width='512' height='512'/><text x='50%' y='50%' font-size='300' fill='white' text-anchor='middle' dy='.3em'>🌱</text></svg>",
+                    sizes: "512x512",
+                    type: "image/svg+xml",
+                    purpose: "maskable"
+                }
+            ],
+            categories: ["health", "medical"],
+            screenshots: [
+                {
+                    src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'><rect fill='%23f0f0f0' width='540' height='720'/><text x='50%' y='50%' font-size='100' fill='%232D9F75' text-anchor='middle' dy='.3em'>MediGarden</text></svg>",
+                    sizes: "540x720",
+                    type: "image/svg+xml",
+                    form_factor: "narrow"
+                }
+            ]
+        };
+
+        const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        const manifestUrl = URL.createObjectURL(blob);
+        document.querySelector('link[rel="manifest"]').href = manifestUrl;
+
+        // Service Worker
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                self.addEventListener('install', (event) => {
+                    event.waitUntil(self.skipWaiting());
+                });
+                
+                self.addEventListener('activate', (event) => {
+                    event.waitUntil(self.clients.claim());
+                });
+
+                self.addEventListener('push', event => {
+                    if (event.data) {
+                        const data = event.data.json();
+                        self.registration.showNotification(data.title, {
+                            body: data.body,
+                            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">💊</text></svg>',
+                            badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%232D9F75" width="100" height="100"/><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">💊</text></svg>',
+                            tag: data.tag || 'default',
+                            requireInteraction: true,
+                            actions: [
+                                {action: 'taken', title: '✓ Taken'},
+                                {action: 'missed', title: '✕ Missed'}
+                            ]
+                        });
+                    }
+                });
+                
+                self.addEventListener('notificationclick', event => {
+                    event.notification.close();
+                    if (event.action === 'taken' || event.action === 'missed') {
+                        clients.matchAll().then(windowClients => {
+                            for (let i = 0; i < windowClients.length; i++) {
+                                const client = windowClients[i];
+                                if (client.url.includes('/') && 'focus' in client) {
+                                    client.focus();
+                                    client.postMessage({
+                                        type: 'NOTIFICATION_ACTION',
+                                        action: event.action,
+                                        medId: event.notification.tag
+                                    });
+                                    return;
+                                }
+                            }
+                            if (clients.openWindow) {
+                                clients.openWindow('/');
+                            }
+                        });
+                    }
+                });
+            `;
+            const swBlob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(swBlob);
+            navigator.serviceWorker.register(swUrl).catch(e => console.log('SW Registration failed:', e));
+        }
+    </script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC7UVEDtJb0BF47grWruBwH1H6t0ntOv44",
+            authDomain: "familyfirst-af213.firebaseapp.com",
+            databaseURL: "https://familyfirst-af213-default-rtdb.firebaseio.com",
+            projectId: "familyfirst-af213",
+            storageBucket: "familyfirst-af213.firebasestorage.app",
+            messagingSenderId: "994214775455",
+            appId: "1:994214775455:web:4a76590c830322fbceb0aa"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+
+        firebase.initializeApp(firebaseConfig);
+
+            function app() {
+                return {
+                    isLoggedIn: false,
+                    currentPage: 'login',
+                    loginTab: 'signin',
+                    modal: null,
+                    meds: [],
+                    history: {},
+                    form: {
+                        name: '',
+                        time: '',
+                        dosage: '',
+                        notes: '',
+                        frequency: { type: 'daily', timesPerDay: 1, duration: 30, durationUnit: 'days' }
+                    },
+                    currentMonthOffset: 0,
+                    uid: null,
+                    displayName: '',
+                    userEmail: '',
+                    profile: { displayName: '', email: '' },
+                    inviteUid: '',
+                    familyMembers: [],
+                    auth: { email: '', password: '', displayName: '' },
+                    inAppReminders: [],
+                    scheduledTimers: {},
+                    notifPermissionText: 'Unknown',
+                    familyData: {},
+                    familyAlerts: [],
+                    relationshipFilter: 'all',
+                    relationshipForMember: null,
+                    viewingMemberGarden: null,
+                    viewingMemberId: null,
+                    viewingMemberName: '',
+                    viewingMemberAdherence: 0,
+                    viewingMemberStreak: 0,
+                    viewingMemberStatus: 'Unknown',
+                    installPrompt: null,
+                    settings: {
+                        soundEnabled: true,
+                        medicationReminders: true,
+                        familyAlerts: true
+                    },
+
+                    get calendarDays() {
+                        const d = new Date();
+                        d.setMonth(d.getMonth() + this.currentMonthOffset, 1);
+                        const month = d.getMonth();
+                        const firstWeekday = new Date(d.getFullYear(), month, 1).getDay();
+                        const daysInMonth = new Date(d.getFullYear(), month + 1, 0).getDate();
+                        const arr = [];
+                        for (let i = 0; i < firstWeekday; i++) arr.push({ day: '', markerClass: '', markerText: '' });
+                        for (let day = 1; day <= daysInMonth; day++) {
+                            const key = `${d.getFullYear()}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            const rec = this.history[key];
+                            let cl = 'bg-gray-100', text = '';
+                            if (rec) {
+                                if (rec.taken === rec.total) { cl = 'bg-green-500 text-white'; text = '✓'; }
+                                else if ((rec.taken || 0) > 0) { cl = 'bg-yellow-500 text-white'; text = '-'; }
+                                else { cl = 'bg-red-500 text-white'; text = '✕'; }
+                            }
+                            arr.push({ day, markerClass: cl + ' p-3 rounded text-center', markerText: text });
+                        }
+                        return arr;
+                    },
+
+                    init() {
+                        window.addEventListener('beforeinstallprompt', (e) => {
+                            e.preventDefault();
+                            this.installPrompt = e;
+                        });
+
+                        if ('serviceWorker' in navigator) {
+                            navigator.serviceWorker.controller?.postMessage({ type: 'INIT' });
+                            navigator.serviceWorker.addEventListener('message', event => {
+                                if (event.data.type === 'NOTIFICATION_ACTION') {
+                                    if (event.data.action === 'taken') {
+                                        this.takeMedicationById(event.data.medId);
+                                    } else if (event.data.action === 'missed') {
+                                        this.markMedicationMissed(event.data.medId);
+                                    }
+                                }
+                            });
+                        }
+
+                        firebase.auth().onAuthStateChanged(async (user) => {
+                            if (user) {
+                                this.isLoggedIn = true;
+                                this.uid = user.uid;
+                                this.displayName = user.displayName || 'User';
+                                this.userEmail = user.email || 'guest@medigarden.com';
+                                this.profile.email = user.email || '';
+                                this.profile.displayName = user.displayName || '';
+                                this.currentPage = 'dashboard';
+                                await this.loadFromFirebase();
+                                this.scheduleAllNotifications();
+                                this.checkFamilyAlerts();
+                                setInterval(() => this.checkFamilyAlerts(), 3600 * 1000);
+                            } else {
+                                this.isLoggedIn = false;
+                                this.currentPage = 'login';
+                            }
+                        });
+
+                        setInterval(() => this.checkDueReminders(), 60 * 1000);
+                        this.updateNotifPermissionText();
+                        this.loadSettings();
+                    },
+
+                    installApp() {
+                        if (this.installPrompt) {
+                            this.installPrompt.prompt();
+                            this.installPrompt.userChoice.then((choiceResult) => {
+                                if (choiceResult.outcome === 'accepted') {
+                                    this.installPrompt = null;
+                                    alert('🎉 App installed successfully! You can now access it from your home screen.');
+                                }
+                            });
+                        }
+                    },
+
+                    loadSettings() {
+                        const saved = localStorage.getItem('medigarden_settings');
+                        if (saved) this.settings = JSON.parse(saved);
+                    },
+
+                    saveSettings() {
+                        localStorage.setItem('medigarden_settings', JSON.stringify(this.settings));
+                    },
+
+                    async signUp() {
+                        try {
+                            const res = await firebase.auth().createUserWithEmailAndPassword(this.auth.email, this.auth.password);
+                            await res.user.updateProfile({ displayName: this.auth.displayName });
+                            await firebase.database().ref(`users/${res.user.uid}/profile`).set({
+                                displayName: this.auth.displayName,
+                                email: this.auth.email,
+                                createdAt: new Date().toISOString()
+                            });
+                            this.auth = { email: '', password: '', displayName: '' };
+                            alert('Account created successfully! Please sign in.');
+                        } catch (e) {
+                            alert('Sign up error: ' + e.message);
+                        }
+                    },
+
+                    async signIn() {
+                        try {
+                            await firebase.auth().signInWithEmailAndPassword(this.auth.email, this.auth.password);
+                            this.auth.password = '';
+                        } catch (e) {
+                            alert('Sign in error: ' + e.message);
+                        }
+                    },
+
+                    async signInWithGoogle() {
+                        try {
+                            const provider = new firebase.auth.GoogleAuthProvider();
+                            const res = await firebase.auth().signInWithPopup(provider);
+                            const p = { displayName: res.user.displayName || '', email: res.user.email || '' };
+                            await firebase.database().ref(`users/${res.user.uid}/profile`).set(p);
+                        } catch (e) {
+                            alert('Google sign-in error: ' + e.message);
+                        }
+                    },
+
+                    async logout() {
+                        try {
+                            await firebase.auth().signOut();
+                            this.isLoggedIn = false;
+                            this.currentPage = 'login';
+                        } catch (e) {
+                            alert('Logout error');
+                        }
+                    },
+
+                    async loadFromFirebase() {
+                        if (!this.uid) return;
+                        const ref = firebase.database().ref(`users/${this.uid}`);
+                        ref.on('value', async (snap) => {
+                            const val = snap.val() || {};
+                            if (val.state) {
+                                this.meds = (val.state.meds || []).map(m => ({ ...m, id: m.id || this.cryptoId() }));
+                                this.history = val.state.history || {};
+                            }
+                            this.profile = val.profile || {};
+                            this.displayName = this.profile.displayName || this.displayName;
+                            await this.loadFamilyList(val.family || {});
+                            this.loadFamilyData();
+                        });
+                    },
+
+                    async loadFamilyList(familyObj) {
+                        this.familyMembers = [];
+                        for (const fid of Object.keys(familyObj || {})) {
+                            try {
+                                const snap = await firebase.database().ref(`users/${fid}/profile`).once('value');
+                                const p = snap.val() || {};
+                                this.familyMembers.push({
+                                    uid: fid,
+                                    displayName: p.displayName || '',
+                                    email: p.email || '',
+                                    relationship: p.relationship || 'Family Member'
+                                });
+                            } catch (e) {
+                                this.familyMembers.push({ uid: fid });
+                            }
+                        }
+                    },
+
+                    async loadFamilyData() {
+                        for (const member of this.familyMembers) {
+                            try {
+                                const snap = await firebase.database().ref(`users/${member.uid}/state`).once('value');
+                                this.familyData[member.uid] = snap.val() || {};
+                            } catch (e) {
+                                console.log('could not load family data', e);
+                            }
+                        }
+                    },
+
+                    async checkFamilyAlerts() {
+                        if (!this.settings.familyAlerts) return;
+
+                        this.familyAlerts = [];
+                        for (const member of this.familyMembers) {
+                            const data = this.familyData[member.uid] || {};
+                            const history = data.history || {};
+                            let missedDays = 0;
+
+                            for (let i = 0; i < 2; i++) {
+                                const k = this.getTodayKey(-i);
+                                const rec = history[k];
+                                if (!rec || (rec.taken || 0) === 0) missedDays++;
+                            }
+
+                            if (missedDays >= 2) {
+                                const alert = {
+                                    id: member.uid + '-' + Date.now(),
+                                    memberId: member.uid,
+                                    memberName: member.displayName || member.email,
+                                    message: `${member.displayName || 'This member'} has missed medications for ${missedDays} consecutive days!`,
+                                    severity: missedDays > 2 ? 'critical' : 'warning',
+                                    timestamp: new Date().toISOString()
+                                };
+
+                                this.familyAlerts.push(alert);
+                                await this.sendFamilyNotification(alert);
+                            }
+                        }
+                    },
+
+                    async sendFamilyNotification(alert) {
+                        if (Notification.permission === 'granted' && this.settings.familyAlerts) {
+                            const notification = new Notification(`⚠️ ${alert.memberName}`, {
+                                body: alert.message,
+                                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">👥</text></svg>',
+                                tag: alert.id,
+                                requireInteraction: true
+                            });
+
+                            if (this.settings.soundEnabled) {
+                                this.playNotificationSound();
+                            }
+                        }
+                    },
+
+                    getTodayKey(offset = 0) {
+                        const d = new Date();
+                        d.setDate(d.getDate() + offset);
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    },
+
+                    getTodaysMeds() {
+                        return this.meds.filter(m => {
+                            const freq = m.frequency || { type: 'daily' };
+                            if (freq.type === 'daily') return true;
+                            return true;
+                        });
+                    },
+
+                    getFrequencyLabel(freq) {
+                        if (!freq) return 'Daily';
+                        if (freq.type === 'daily') return 'Daily';
+                        if (freq.type === 'custom') {
+                            return `${freq.timesPerDay}x/day for ${freq.duration} ${freq.durationUnit}`;
+                        }
+                        return 'Daily';
+                    },
+
+                    saveLocal() {
+                        localStorage.setItem('medigarden_state', JSON.stringify({ meds: this.meds, history: this.history }));
+                    },
+
+                    save() {
+                        this.saveLocal();
+                        if (this.uid) {
+                            firebase.database().ref(`users/${this.uid}/state`).set({
+                                meds: this.meds,
+                                history: this.history,
+                                updatedAt: new Date().toISOString()
+                            }).catch(e => console.error('Save error:', e));
+                        }
+                        this.scheduleAllNotifications();
+                    },
+
+                    scheduleAllNotifications() {
+                        Object.values(this.scheduledTimers).forEach(t => clearTimeout(t));
+                        this.scheduledTimers = {};
+                        for (const med of this.meds) this.scheduleNotificationForMed(med);
+                    },
+
+                    scheduleNotificationForMed(med) {
+                        if (!med || !med.time) return;
+                        const [hh, mm] = med.time.split(':').map(n => parseInt(n));
+                        const now = new Date();
+                        let next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm);
+                        if (next <= now) next = new Date(next.getTime() + 24 * 3600 * 1000);
+                        const ms = next.getTime() - now.getTime();
+                        this.scheduledTimers[med.id] = setTimeout(() => {
+                            this.triggerReminder(med);
+                            if (med.frequency?.type === 'daily') this.scheduleNotificationForMed(med);
+                        }, ms);
+                    },
+
+                    checkDueReminders() {
+                        if (!this.settings.medicationReminders) return;
+
+                        const now = new Date();
+                        for (const med of this.getTodaysMeds()) {
+                            if (med.taken) continue;
+                            const [hh, mm] = (med.time || '00:00').split(':').map(n => parseInt(n));
+                            const scheduled = new Date();
+                            scheduled.setHours(hh, mm);
+                            if (Math.abs(scheduled - now) < 61000 && !this.inAppReminders.find(r => r.medId === med.id)) {
+                                this.triggerReminder(med);
+                            }
+                        }
+                    },
+
+                    triggerReminder(med) {
+                        this.inAppReminders.push({ medId: med.id, name: med.name, time: med.time });
+                        if (Notification.permission === 'granted') {
+                            const notification = new Notification('💊 Medication Time!', {
+                                body: `${med.name} at ${med.time}`,
+                                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">💊</text></svg>',
+                                tag: med.id,
+                                requireInteraction: true,
+                                actions: [
+                                    { action: 'taken', title: '✓ Taken' },
+                                    { action: 'missed', title: '✕ Missed' }
+                                ]
+                            });
+
+                            notification.onclick = () => {
+                                window.focus();
+                                this.takeMedicationById(med.id);
+                            };
+                        }
+
+                        if (this.settings.soundEnabled) {
+                            this.playNotificationSound();
+                        }
+                    },
+
+                    playNotificationSound() {
+                        try {
+                            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                            const oscillator = audioContext.createOscillator();
+                            const gainNode = audioContext.createGain();
+
+                            oscillator.connect(gainNode);
+                            gainNode.connect(audioContext.destination);
+
+                            oscillator.frequency.value = 800;
+                            oscillator.type = 'sine';
+
+                            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+                            oscillator.start(audioContext.currentTime);
+                            oscillator.stop(audioContext.currentTime + 0.5);
+                        } catch (e) {
+                            console.log('Sound notification failed:', e);
+                        }
+                    },
+
+                    handleReminderYes(r) {
+                        this.takeMedicationById(r.medId);
+                        this.inAppReminders = this.inAppReminders.filter(x => x.medId !== r.medId);
+                    },
+
+                    handleReminderMissed(r) {
+                        this.markMedicationMissed(r.medId);
+                        this.inAppReminders = this.inAppReminders.filter(x => x.medId !== r.medId);
+                    },
+
+                    snoozeReminder(r, min) {
+                        this.inAppReminders = this.inAppReminders.filter(x => x.medId !== r.medId);
+                        setTimeout(() => this.triggerReminder(this.meds.find(m => m.id === r.medId)), min * 60 * 1000);
+                    },
+
+                    takeMedicationById(id) {
+                        const med = this.meds.find(m => m.id === id);
+                        if (!med || med.taken) return;
+                        med.taken = true;
+                        const key = this.getTodayKey();
+                        const rec = this.history[key] || { total: this.getTodaysMeds().length, taken: 0 };
+                        rec.taken = (rec.taken || 0) + 1;
+                        rec.total = this.getTodaysMeds().length;
+                        rec.lastTakenAt = new Date().toISOString();
+                        this.history[key] = rec;
+                        this.save();
+                        this.checkFamilyAlerts();
+                    },
+
+                    markMedicationMissed(id) {
+                        const med = this.meds.find(m => m.id === id);
+                        if (!med) return;
+                        const key = this.getTodayKey();
+                        const rec = this.history[key] || { total: this.getTodaysMeds().length, taken: 0 };
+                        rec.total = this.getTodaysMeds().length;
+                        rec.missedAt = new Date().toISOString();
+                        this.history[key] = rec;
+                        this.save();
+                    },
+
+                    openAdd() {
+                        this.form = {
+                            name: '',
+                            time: '',
+                            dosage: '',
+                            notes: '',
+                            frequency: { type: 'daily', timesPerDay: 1, duration: 30, durationUnit: 'days' }
+                        };
+                        this.modal = 'add';
+                    },
+
+                    openEditMed(med) {
+                        this.form = { ...med };
+                        if (!this.form.frequency) {
+                            this.form.frequency = { type: 'daily', timesPerDay: 1, duration: 30, durationUnit: 'days' };
+                        }
+                        this.modal = 'edit';
+                    },
+
+                    submitAdd() {
+                        if (!this.form.name || !this.form.time) return;
+                        if (this.modal === 'edit') {
+                            const idx = this.meds.findIndex(m => m.id === this.form.id);
+                            if (idx >= 0) this.meds[idx] = { ...this.form };
+                        } else {
+                            this.meds.push({ id: this.cryptoId(), ...this.form });
+                        }
+                        this.save();
+                        this.modal = null;
+                    },
+
+                    deleteMedication(id) {
+                        if (confirm('Delete this medication?')) {
+                            this.meds = this.meds.filter(m => m.id !== id);
+                            this.save();
+                        }
+                    },
+
+                    copyShareCode() {
+                        navigator.clipboard?.writeText(this.uid).then(() => alert('Share code copied to clipboard!'));
+                    },
+
+                    async addFamilyMember() {
+                        if (!this.uid || !this.inviteUid) { alert('Enter a valid code'); return; }
+                        try {
+                            const updates = {};
+                            updates[`users/${this.uid}/family/${this.inviteUid}`] = true;
+                            updates[`users/${this.inviteUid}/family/${this.uid}`] = true;
+                            await firebase.database().ref().update(updates);
+                            this.inviteUid = '';
+                            const snap = await firebase.database().ref(`users/${this.uid}/family`).once('value');
+                            await this.loadFamilyList(snap.val() || {});
+                            alert('Family member added!');
+                        } catch (e) {
+                            alert('Error: ' + e.message);
+                        }
+                    },
+
+                    async removeFamilyMember(fid) {
+                        if (!confirm('Remove this family member?')) return;
+                        const updates = {};
+                        updates[`users/${this.uid}/family/${fid}`] = null;
+                        updates[`users/${fid}/family/${this.uid}`] = null;
+                        await firebase.database().ref().update(updates);
+                        this.familyMembers = this.familyMembers.filter(m => m.uid !== fid);
+                    },
+
+                    openSetRelationship(uid) {
+                        this.relationshipForMember = uid;
+                        this.modal = 'setRelationship';
+                    },
+
+                    async setMemberRelationship(rel) {
+                        const member = this.familyMembers.find(m => m.uid === this.relationshipForMember);
+                        if (member) {
+                            member.relationship = rel;
+                            await firebase.database().ref(`users/${this.relationshipForMember}/profile/relationship`).set(rel);
+                        }
+                    },
+
+                    viewMemberGarden(uid) {
+                        const member = this.familyMembers.find(m => m.uid === uid);
+                        if (!member) return;
+                        this.viewingMemberId = uid;
+                        this.viewingMemberName = member.displayName || member.email || uid;
+                        this.viewingMemberAdherence = this.getMemberAdherence(uid);
+                        this.viewingMemberStreak = this.getMemberStreak(uid);
+                        this.viewingMemberStatus = this.getMemberStatus(uid);
+                        this.viewingMemberGarden = true;
+                    },
+
+                    getMemberEmoji(uid) {
+                        const status = this.getMemberStatus(uid);
+                        return status === 'On Track' ? '😊' : '😟';
+                    },
+
+                    getMemberAdherence(uid) {
+                        const data = this.familyData[uid] || {};
+                        const hist = data.history || {};
+                        const scores = [];
+                        for (let i = 0; i < 7; i++) {
+                            const k = this.getTodayKey(-i);
+                            const r = hist[k];
+                            if (r && r.total > 0) scores.push((r.taken || 0) / r.total * 100);
+                        }
+                        return Math.round(scores.reduce((a, b) => a + b, 0) / (scores.length || 1));
+                    },
+
+                    getMemberStreak(uid) {
+                        const data = this.familyData[uid] || {};
+                        const hist = data.history || {};
+                        let s = 0;
+                        for (let i = 0; i < 30; i++) {
+                            const k = this.getTodayKey(-i);
+                            const r = hist[k];
+                            if (r && r.total > 0 && r.taken === r.total) s++;
+                            else break;
+                        }
+                        return s;
+                    },
+
+                    getMemberStatus(uid) {
+                        return this.getMemberAdherence(uid) >= 70 ? 'On Track' : 'Needs Help';
+                    },
+
+                    markAlertResolved(id) {
+                        this.familyAlerts = this.familyAlerts.filter(a => a.id !== id);
+                    },
+
+                    async sendEncouragementMessage(uid) {
+                        const member = this.familyMembers.find(m => m.uid === uid);
+                        if (member) {
+                            const msg = `Keep going! 💪 We're here to support you. You can do this! 🌟`;
+                            alert(`Message sent to ${member.displayName}: "${msg}"`);
+                        }
+                    },
+
+                    updateNotifPermissionText() {
+                        this.notifPermissionText = Notification.permission;
+                    },
+
+                    async requestNotificationPermission() {
+                        const p = await Notification.requestPermission();
+                        this.updateNotifPermissionText();
+                        if (p === 'granted') {
+                            alert('✅ Notifications enabled! You will now receive reminders even when the app is closed.');
+                        }
+                    },
+
+                    async updateProfile() {
+                        this.saveSettings();
+                        if (this.uid) {
+                            await firebase.database().ref(`users/${this.uid}/profile`).update(this.profile).catch(e => console.error(e));
+                        }
+                        alert('✅ Settings saved successfully!');
+                    },
+
+                    offsetMonth(d) {
+                        this.currentMonthOffset += d;
+                    },
+
+                    get currentMonthLabel() {
+                        const d = new Date();
+                        d.setMonth(d.getMonth() + this.currentMonthOffset);
+                        return d.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+                    },
+
+                    get todayTotal() { return this.getTodaysMeds().length; },
+                    get todayTaken() { return this.getTodaysMeds().filter(m => m.taken).length; },
+                    get totalDoses() { return Object.values(this.history).reduce((s, r) => s + (r.taken || 0), 0); },
+                    get todayLabel() { return new Date().toLocaleString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); },
+                    get todayStatus() {
+                        const t = this.todayTaken, tot = this.todayTotal;
+                        return t === 0 ? 'Future' : (t === tot && tot > 0 ? 'All Taken' : 'Partial');
+                    },
+                    get healthScore() {
+                        const scores = [];
+                        for (let i = 0; i < 7; i++) {
+                            const r = this.history[this.getTodayKey(-i)];
+                            if (r && r.total > 0) scores.push((r.taken || 0) / r.total * 100);
+                        }
+                        return scores.reduce((a, b) => a + b, 0) / (scores.length || 1);
+                    },
+                    get weekAdherence() { return Math.round(this.healthScore); },
+                    get streak() {
+                        let s = 0;
+                        for (let i = 0; i < 30; i++) {
+                            const r = this.history[this.getTodayKey(-i)];
+                            if (r && r.total > 0 && r.taken === r.total) s++;
+                            else break;
+                        }
+                        return s;
+                    },
+
+                    cryptoId() {
+                        return Math.random().toString(36).slice(2, 9);
+                    }
+                }
+            }
+        </script>
+    </body>
+    
+    </html>
