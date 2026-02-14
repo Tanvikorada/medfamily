@@ -718,16 +718,18 @@
 
     <!-- MAIN APP -->
     <template x-if="isLoggedIn && currentPage !== 'login'">
-        <div class="app-shell min-h-screen bg-gradient-to-b from-blue-50 to-green-50">
+        <div class="app-shell min-h-screen bg-gradient-to-b from-blue-50 to-green-50" @keydown.escape.window="sidebarOpen = false">
             <div class="app-layout">
-                <aside x-cloak class="app-sidebar" :class="sidebarOpen ? 'open' : ''"
-                    :style="sidebarOpen ? 'transform: translateX(0)' : 'transform: translateX(-103%)'">
-                    <div class="flex items-center gap-3 pb-2 border-b border-white/20">
+                <aside x-cloak class="app-sidebar" :class="sidebarOpen ? 'open' : ''">
+                    <div class="flex items-center justify-between gap-3 pb-2 border-b border-white/20">
+                        <div class="flex items-center gap-3">
                         <div class="brand-mark">MG</div>
                         <div>
                             <h1 class="font-bold text-lg text-white">MediGarden</h1>
                             <p class="text-xs text-slate-200" x-text="displayName"></p>
                         </div>
+                        </div>
+                        <button @click="sidebarOpen = false" class="px-2 py-1 rounded-md border border-white/30 text-white text-sm">Close</button>
                     </div>
 
                     <button @click="goTo('dashboard')" class="nav-btn" :class="currentPage === 'dashboard' ? 'active' : ''"><span x-text="t('nav.dashboard')"></span><span>🏠</span></button>
@@ -744,12 +746,12 @@
                         <button @click="logout()" class="nav-btn bg-red-500/80 border-red-300/30 text-white"><span x-text="t('nav.logout')"></span><span>↩</span></button>
                     </div>
                 </aside>
-                <div x-cloak x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 bg-black/30 z-[70] lg:hidden"></div>
+                <div x-cloak x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 bg-black/30 z-[70]"></div>
 
                 <div class="app-content-wrap">
                     <header class="app-topbar">
                         <div class="flex items-center gap-3">
-                            <button @click="sidebarOpen = !sidebarOpen" class="px-3 py-2 border rounded-lg bg-white">☰</button>
+                            <button @click="toggleSidebar()" class="px-3 py-2 border rounded-lg bg-white">☰</button>
                             <div>
                                 <p class="text-sm text-slate-500">MediGarden Control Center</p>
                                 <p class="font-bold" x-text="`Welcome, ${displayName}`"></p>
@@ -1021,6 +1023,22 @@
                                 <p class="font-bold" :class="bpConnected ? 'text-green-600' : 'text-gray-600'" x-text="bpConnected ? 'Connected' : 'Disconnected'"></p>
                             </div>
                         </div>
+                        <div class="grid sm:grid-cols-3 gap-3 mb-4">
+                            <div class="p-3 rounded-xl bg-slate-50 border">
+                                <p class="text-xs text-gray-500">Monitoring Mode</p>
+                                <p class="font-bold"
+                                    :class="monitoringStatus === 'live' ? 'text-green-600' : monitoringStatus === 'simulated' ? 'text-yellow-600' : 'text-gray-600'"
+                                    x-text="monitoringStatus === 'live' ? 'Live Devices' : monitoringStatus === 'simulated' ? 'Simulation' : 'Idle'"></p>
+                            </div>
+                            <div class="p-3 rounded-xl bg-slate-50 border">
+                                <p class="text-xs text-gray-500">Last Data Source</p>
+                                <p class="font-bold text-slate-700" x-text="monitoringLastSource || '-'"></p>
+                            </div>
+                            <div class="p-3 rounded-xl bg-slate-50 border">
+                                <p class="text-xs text-gray-500">Events Logged</p>
+                                <p class="font-bold text-slate-700" x-text="monitoringEvents.length"></p>
+                            </div>
+                        </div>
                         <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
                             <div class="p-4 bg-red-50 rounded-xl">
                                 <p class="text-xs text-gray-500">Heart Rate</p>
@@ -1046,6 +1064,23 @@
                         <p class="text-xs text-gray-500 mt-4"
                             x-text="'Last sync: ' + (vitals.lastUpdated ? new Date(vitals.lastUpdated).toLocaleString() : '-')">
                         </p>
+                        <div class="mt-4 border rounded-xl p-3 bg-slate-50">
+                            <div class="flex items-center justify-between mb-2">
+                                <p class="text-sm font-semibold text-slate-700">Monitoring Activity Log</p>
+                                <button @click="monitoringEvents = []" class="text-xs px-2 py-1 border rounded-md bg-white">Clear</button>
+                            </div>
+                            <div class="space-y-2 max-h-40 overflow-y-auto">
+                                <template x-if="monitoringEvents.length === 0">
+                                    <p class="text-xs text-gray-500">No events yet.</p>
+                                </template>
+                                <template x-for="evt in monitoringEvents" :key="evt.id">
+                                    <div class="text-xs p-2 rounded-lg border bg-white">
+                                        <p class="font-semibold text-slate-700" x-text="evt.source + ' - ' + evt.message"></p>
+                                        <p class="text-gray-500 mt-1" x-text="new Date(evt.ts).toLocaleString()"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
                     </div>
                 </main>
             </template>
@@ -1868,60 +1903,9 @@
         const manifestUrl = URL.createObjectURL(blob);
         document.querySelector('link[rel="manifest"]').href = manifestUrl;
 
-        // Service Worker
+        // Static Service Worker (required for reliable push)
         if ('serviceWorker' in navigator) {
-            const swCode = `
-                self.addEventListener('install', (event) => {
-                    event.waitUntil(self.skipWaiting());
-                });
-                
-                self.addEventListener('activate', (event) => {
-                    event.waitUntil(self.clients.claim());
-                });
-
-                self.addEventListener('push', event => {
-                    if (event.data) {
-                        const data = event.data.json();
-                        self.registration.showNotification(data.title, {
-                            body: data.body,
-                            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">💊</text></svg>',
-                            badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%232D9F75" width="100" height="100"/><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">💊</text></svg>',
-                            tag: data.tag || 'default',
-                            requireInteraction: true,
-                            actions: [
-                                {action: 'taken', title: '✓ Taken'},
-                                {action: 'missed', title: '✕ Missed'}
-                            ]
-                        });
-                    }
-                });
-                
-                self.addEventListener('notificationclick', event => {
-                    event.notification.close();
-                    if (event.action === 'taken' || event.action === 'missed') {
-                        clients.matchAll().then(windowClients => {
-                            for (let i = 0; i < windowClients.length; i++) {
-                                const client = windowClients[i];
-                                if (client.url.includes('/') && 'focus' in client) {
-                                    client.focus();
-                                    client.postMessage({
-                                        type: 'NOTIFICATION_ACTION',
-                                        action: event.action,
-                                        medId: event.notification.tag
-                                    });
-                                    return;
-                                }
-                            }
-                            if (clients.openWindow) {
-                                clients.openWindow('/');
-                            }
-                        });
-                    }
-                });
-            `;
-            const swBlob = new Blob([swCode], { type: 'application/javascript' });
-            const swUrl = URL.createObjectURL(swBlob);
-            navigator.serviceWorker.register(swUrl).catch(e => console.log('SW Registration failed:', e));
+            navigator.serviceWorker.register('/sw.js').catch(e => console.log('SW Registration failed:', e));
         }
     </script>
 
@@ -1937,6 +1921,7 @@
         };
 
         firebase.initializeApp(firebaseConfig);
+        const VAPID_PUBLIC_KEY = "REPLACE_WITH_FIREBASE_WEB_PUSH_CERTIFICATE_KEY";
 
         function app() {
             return {
@@ -1978,6 +1963,9 @@
                 sidebarOpen: false,
                 notificationPanelOpen: false,
                 notificationLog: [],
+                swRegistration: null,
+                fcmToken: '',
+                messagingInitialized: false,
                 settings: {
                     soundEnabled: true,
                     medicationReminders: true,
@@ -1994,6 +1982,8 @@
                 stepTrackingActive: false,
                 heartRateConnected: false,
                 bpConnected: false,
+                monitoringEvents: [],
+                monitoringLastSource: 'System',
                 motionWasHigh: false,
                 motionLastStepTs: 0,
                 motionHandler: null,
@@ -2164,18 +2154,7 @@
                         this.installPrompt = e;
                     });
 
-                    if ('serviceWorker' in navigator) {
-                        navigator.serviceWorker.controller?.postMessage({ type: 'INIT' });
-                        navigator.serviceWorker.addEventListener('message', event => {
-                            if (event.data.type === 'NOTIFICATION_ACTION') {
-                                if (event.data.action === 'taken') {
-                                    this.takeMedicationById(event.data.medId);
-                                } else if (event.data.action === 'missed') {
-                                    this.markMedicationMissed(event.data.medId);
-                                }
-                            }
-                        });
-                    }
+                    this.initServiceWorker();
 
                     firebase.auth().onAuthStateChanged(async (user) => {
                         if (user) {
@@ -2190,10 +2169,13 @@
                             this.scheduleAllNotifications();
                             this.checkFamilyAlerts();
                             this.runAiInsights();
+                            await this.initPushMessaging();
+                            await this.syncPushTokenToFirebase();
                             setInterval(() => this.checkFamilyAlerts(), 3600 * 1000);
                         } else {
                             this.isLoggedIn = false;
                             this.currentPage = 'login';
+                            this.fcmToken = '';
                         }
                     });
 
@@ -2222,7 +2204,10 @@
                 loadSettings() {
                     const saved = localStorage.getItem('medigarden_settings');
                     if (saved) this.settings = { ...this.settings, ...JSON.parse(saved) };
-                    this.settings.language = 'en';
+                },
+
+                toggleSidebar() {
+                    this.sidebarOpen = !this.sidebarOpen;
                 },
 
                 goTo(page) {
@@ -2244,6 +2229,110 @@
 
                 markAllNotificationsRead() {
                     this.notificationLog = this.notificationLog.map(n => ({ ...n, read: true }));
+                },
+
+                async initServiceWorker() {
+                    if (!('serviceWorker' in navigator)) return;
+                    try {
+                        this.swRegistration = await navigator.serviceWorker.ready;
+                        navigator.serviceWorker.addEventListener('message', event => {
+                            if (event.data.type === 'NOTIFICATION_ACTION') {
+                                if (event.data.action === 'taken') {
+                                    this.takeMedicationById(event.data.medId);
+                                } else if (event.data.action === 'missed') {
+                                    this.markMedicationMissed(event.data.medId);
+                                }
+                            }
+                        });
+                    } catch (e) {
+                        console.log('Service worker ready failed:', e);
+                    }
+                },
+
+                async initPushMessaging() {
+                    if (this.messagingInitialized) return;
+                    if (!('Notification' in window)) return;
+                    try {
+                        const messaging = firebase.messaging();
+                        messaging.onMessage((payload) => {
+                            const title = payload?.notification?.title || 'MediGarden';
+                            const body = payload?.notification?.body || 'You have a new notification.';
+                            this.pushNotification(title, body, 'info');
+                            if (this.settings.soundEnabled) this.playNotificationSound();
+                        });
+                        this.messagingInitialized = true;
+                    } catch (e) {
+                        console.log('FCM init failed:', e);
+                    }
+                },
+
+                getPushTokenKey(token) {
+                    return (token || '').replace(/[.#$/\[\]]/g, '_').replace(/\//g, '_');
+                },
+
+                async syncPushTokenToFirebase() {
+                    if (!this.uid || !('Notification' in window)) return;
+                    if (Notification.permission !== 'granted') return;
+                    if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.includes('REPLACE_WITH')) {
+                        console.warn('Set VAPID_PUBLIC_KEY to enable remote push tokens.');
+                        return;
+                    }
+                    try {
+                        const messaging = firebase.messaging();
+                        const token = await messaging.getToken({
+                            vapidKey: VAPID_PUBLIC_KEY,
+                            serviceWorkerRegistration: this.swRegistration || undefined
+                        });
+                        if (!token) return;
+                        this.fcmToken = token;
+                        const key = this.getPushTokenKey(token);
+                        await firebase.database().ref(`users/${this.uid}/pushTokens/${key}`).set({
+                            token,
+                            platform: navigator.platform || 'web',
+                            ua: navigator.userAgent || '',
+                            updatedAt: new Date().toISOString()
+                        });
+                    } catch (e) {
+                        console.log('FCM token sync failed:', e);
+                    }
+                },
+
+                async queueNotificationForUser(uid, title, body, extra = {}) {
+                    if (!uid) return;
+                    const payload = {
+                        title,
+                        body,
+                        ...extra,
+                        createdAt: new Date().toISOString()
+                    };
+                    await firebase.database().ref(`notificationQueue/${uid}`).push(payload);
+                },
+
+                addMonitoringEvent(source, message, level = 'info') {
+                    this.monitoringEvents.unshift({
+                        id: this.cryptoId(),
+                        source,
+                        message,
+                        level,
+                        ts: Date.now()
+                    });
+                    if (this.monitoringEvents.length > 60) this.monitoringEvents.pop();
+                },
+
+                async showDeviceNotification(title, options = {}) {
+                    if (!('Notification' in window)) return null;
+                    if (Notification.permission !== 'granted') return null;
+                    try {
+                        if ('serviceWorker' in navigator) {
+                            const reg = await navigator.serviceWorker.ready;
+                            await reg.showNotification(title, options);
+                            return null;
+                        }
+                        return new Notification(title, options);
+                    } catch (e) {
+                        console.log('Device notification failed:', e);
+                        return null;
+                    }
                 },
 
                 translateWholeApp() {
@@ -2343,6 +2432,10 @@
 
                 async logout() {
                     try {
+                        if (this.uid && this.fcmToken) {
+                            const key = this.getPushTokenKey(this.fcmToken);
+                            await firebase.database().ref(`users/${this.uid}/pushTokens/${key}`).remove().catch(() => { });
+                        }
                         if (this.remoteMonitorTimer) {
                             clearInterval(this.remoteMonitorTimer);
                             this.remoteMonitorTimer = null;
@@ -2353,6 +2446,7 @@
                         }
                         this.stepTrackingActive = false;
                         this.remoteMonitoringActive = false;
+                        this.fcmToken = '';
                         await firebase.auth().signOut();
                         this.isLoggedIn = false;
                         this.currentPage = 'login';
@@ -2476,7 +2570,7 @@
 
                 async sendFamilyNotification(alert) {
                     if (Notification.permission === 'granted' && this.settings.familyAlerts) {
-                        const notification = new Notification(`⚠️ ${alert.memberName}`, {
+                        await this.showDeviceNotification(`⚠️ ${alert.memberName}`, {
                             body: alert.message,
                             icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">👥</text></svg>',
                             tag: alert.id,
@@ -2487,6 +2581,10 @@
                             this.playNotificationSound();
                         }
                     }
+                    await this.queueNotificationForUser(this.uid, `⚠️ ${alert.memberName}`, alert.message, {
+                        tag: alert.id,
+                        type: 'familyAlert'
+                    });
                 },
 
                 getTodayKey(offset = 0) {
@@ -2577,11 +2675,13 @@
                     if (this.stepTrackingActive) {
                         if (this.motionHandler) window.removeEventListener('devicemotion', this.motionHandler);
                         this.stepTrackingActive = false;
+                        this.addMonitoringEvent('Pedometer', 'Disconnected');
                         return;
                     }
 
                     if (typeof DeviceMotionEvent === 'undefined') {
                         alert('Device motion API not available on this device/browser.');
+                        this.addMonitoringEvent('Pedometer', 'Device motion API unavailable', 'error');
                         return;
                     }
 
@@ -2590,6 +2690,7 @@
                             const p = await DeviceMotionEvent.requestPermission();
                             if (p !== 'granted') {
                                 alert('Motion permission denied.');
+                                this.addMonitoringEvent('Pedometer', 'Motion permission denied', 'error');
                                 return;
                             }
                         }
@@ -2609,20 +2710,24 @@
                                 this.motionLastStepTs = now;
                                 this.vitals.steps += 1;
                                 this.vitals.lastUpdated = new Date().toISOString();
+                                this.monitoringLastSource = 'Pedometer';
                                 if (this.vitals.steps % 10 === 0) this.save();
                             }
                         };
 
                         window.addEventListener('devicemotion', this.motionHandler, { passive: true });
                         this.stepTrackingActive = true;
+                        this.addMonitoringEvent('Pedometer', 'Connected and tracking started');
                     } catch (e) {
                         alert('Unable to start pedometer: ' + e.message);
+                        this.addMonitoringEvent('Pedometer', `Start failed: ${e.message}`, 'error');
                     }
                 },
 
                 async connectHeartRateMonitor() {
                     if (!navigator.bluetooth) {
                         alert('Bluetooth not supported in this browser.');
+                        this.addMonitoringEvent('Heart Rate', 'Web Bluetooth unavailable', 'error');
                         return;
                     }
                     try {
@@ -2639,19 +2744,23 @@
                             const hr = (flags & 0x1) ? value.getUint16(1, true) : value.getUint8(1);
                             this.vitals.heartRate = hr;
                             this.vitals.lastUpdated = new Date().toISOString();
+                            this.monitoringLastSource = 'Heart Rate Sensor';
                             this.heartRateConnected = true;
                             this.save();
                         });
                         this.heartRateChar = characteristic;
                         this.heartRateConnected = true;
+                        this.addMonitoringEvent('Heart Rate', 'Bluetooth device connected');
                     } catch (e) {
                         alert('Heart rate device connection failed: ' + e.message);
+                        this.addMonitoringEvent('Heart Rate', `Connection failed: ${e.message}`, 'error');
                     }
                 },
 
                 async connectBpMonitor() {
                     if (!navigator.bluetooth) {
                         alert('Bluetooth not supported in this browser.');
+                        this.addMonitoringEvent('Blood Pressure', 'Web Bluetooth unavailable', 'error');
                         return;
                     }
                     try {
@@ -2669,13 +2778,16 @@
                             const dia = this.parseSfloat16(value.getUint16(idx, true));
                             this.vitals.bloodPressure = `${Math.round(sys)}/${Math.round(dia)}`;
                             this.vitals.lastUpdated = new Date().toISOString();
+                            this.monitoringLastSource = 'Blood Pressure Sensor';
                             this.bpConnected = true;
                             this.save();
                         });
                         this.bpChar = characteristic;
                         this.bpConnected = true;
+                        this.addMonitoringEvent('Blood Pressure', 'Bluetooth device connected');
                     } catch (e) {
                         alert('BP monitor connection failed: ' + e.message);
+                        this.addMonitoringEvent('Blood Pressure', `Connection failed: ${e.message}`, 'error');
                     }
                 },
 
@@ -2684,11 +2796,13 @@
                         this.remoteMonitoringActive = false;
                         if (this.remoteMonitorTimer) clearInterval(this.remoteMonitorTimer);
                         this.remoteMonitorTimer = null;
+                        this.addMonitoringEvent('Simulation', 'Stopped');
                         return;
                     }
                     this.remoteMonitoringActive = true;
                     this.simulateVitalUpdate();
                     this.remoteMonitorTimer = setInterval(() => this.simulateVitalUpdate(), 10000);
+                    this.addMonitoringEvent('Simulation', 'Started (10s interval)');
                 },
 
                 simulateVitalUpdate() {
@@ -2703,6 +2817,7 @@
                         steps: this.stepTrackingActive ? this.vitals.steps : this.vitals.steps + rand(30, 220),
                         lastUpdated: new Date().toISOString()
                     };
+                    this.monitoringLastSource = this.remoteMonitoringActive ? 'Simulation Engine' : this.monitoringLastSource;
                     this.vitalsHistory.push({ ...this.vitals });
                     if (this.vitalsHistory.length > 120) this.vitalsHistory.shift();
                     this.runAiInsights();
@@ -2820,11 +2935,11 @@
                     }
                 },
 
-                triggerReminder(med) {
+                async triggerReminder(med) {
                     this.inAppReminders.push({ medId: med.id, name: med.name, time: med.time });
                     this.pushNotification('Medication Reminder', `${med.name} is due at ${med.time}.`, 'warning');
                     if (Notification.permission === 'granted') {
-                        const notification = new Notification('💊 Medication Time!', {
+                        await this.showDeviceNotification('💊 Medication Time!', {
                             body: `${med.name} at ${med.time}`,
                             icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="50" font-size="60" text-anchor="middle" dy=".3em">💊</text></svg>',
                             tag: med.id,
@@ -2834,12 +2949,12 @@
                                 { action: 'missed', title: '✕ Missed' }
                             ]
                         });
-
-                        notification.onclick = () => {
-                            window.focus();
-                            this.takeMedicationById(med.id);
-                        };
                     }
+                    await this.queueNotificationForUser(this.uid, '💊 Medication Time!', `${med.name} at ${med.time}`, {
+                        tag: med.id,
+                        medId: med.id,
+                        type: 'medicationReminder'
+                    });
 
                     if (this.settings.soundEnabled) {
                         this.playNotificationSound();
@@ -3111,6 +3226,8 @@
                     const p = await Notification.requestPermission();
                     this.updateNotifPermissionText();
                     if (p === 'granted') {
+                        await this.initPushMessaging();
+                        await this.syncPushTokenToFirebase();
                         this.pushNotification('Notifications Enabled', 'You will now receive reminders and family alerts.', 'success');
                         alert('✅ Notifications enabled! You will now receive reminders even when the app is closed.');
                     }
@@ -3197,6 +3314,12 @@
                         avgAdherence: Math.round(avg),
                         highRiskCount: data.filter(d => (d.adherence || 0) < 60).length
                     };
+                },
+
+                get monitoringStatus() {
+                    if (this.stepTrackingActive || this.heartRateConnected || this.bpConnected) return 'live';
+                    if (this.remoteMonitoringActive) return 'simulated';
+                    return 'idle';
                 },
 
                 get currentMonthLabel() {
