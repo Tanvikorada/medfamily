@@ -634,6 +634,7 @@
                             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5">
                             Sign in with Google
                         </button>
+                        <p class="text-xs text-gray-500">Email sign-in requires verified email.</p>
                     </div>
 
                     <!-- Sign Up Tab -->
@@ -652,6 +653,19 @@
                             <label class="text-sm font-semibold text-gray-700">Password</label>
                             <input x-model="auth.password" type="password" placeholder="••••••••"
                                 class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                        </div>
+                        <div class="border rounded-xl p-3 bg-slate-50">
+                            <label class="text-sm font-semibold text-gray-700">Phone (optional, OTP verification)</label>
+                            <input x-model="auth.phone" type="tel" placeholder="+91XXXXXXXXXX"
+                                class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
+                            <div class="flex gap-2 mt-2">
+                                <input x-model="auth.otp" type="text" placeholder="OTP code"
+                                    class="flex-1 px-4 py-2 border-2 border-gray-200 rounded-lg" />
+                                <button @click="sendPhoneOtp()" type="button" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold">Send OTP</button>
+                                <button @click="verifyPhoneOtp()" type="button" class="px-3 py-2 bg-indigo-500 text-white rounded-lg text-sm font-bold">Verify</button>
+                            </div>
+                            <p class="text-xs mt-2" :class="auth.phoneVerified ? 'text-green-600' : 'text-gray-500'" x-text="auth.phoneVerified ? 'Phone verified.' : 'Verify phone or use email verification.'"></p>
+                            <div id="recaptcha-container" class="mt-2"></div>
                         </div>
                         <button @click="signUp()"
                             class="w-full bg-[#2D9F75] text-white py-3 rounded-lg font-bold hover:bg-[#258562] transition">Create
@@ -692,6 +706,7 @@
                         <button @click="logout()" class="nav-btn bg-red-500/80 border-red-300/30 text-white"><span x-text="t('nav.logout')"></span><span>↩</span></button>
                     </div>
                 </aside>
+                <div x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 bg-black/30 z-[70] lg:hidden"></div>
 
                 <div class="app-content-wrap">
                     <header class="app-topbar">
@@ -938,18 +953,35 @@
                         <h2 class="text-2xl font-bold gradient-text mb-2" x-text="t('monitoring.title')"></h2>
                         <p class="text-gray-600 mb-6" x-text="t('monitoring.subtitle')"></p>
                         <div class="flex flex-wrap gap-3 mb-6">
-                            <button @click="connectDevice('Smart Watch')"
+                            <button @click="togglePedometerTracking()"
                                 class="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold"
-                                x-text="t('monitoring.connectWatch')"></button>
-                            <button @click="connectDevice('BP Cuff')"
+                                x-text="stepTrackingActive ? 'Stop Pedometer' : 'Connect Pedometer'"></button>
+                            <button @click="connectHeartRateMonitor()"
                                 class="px-4 py-2 bg-indigo-500 text-white rounded-lg font-semibold"
-                                x-text="t('monitoring.connectBp')"></button>
+                                x-text="heartRateConnected ? 'Heart Rate Connected' : 'Connect Heart Rate (Bluetooth)'"></button>
+                            <button @click="connectBpMonitor()"
+                                class="px-4 py-2 bg-violet-500 text-white rounded-lg font-semibold"
+                                x-text="bpConnected ? 'BP Connected' : 'Connect BP Monitor (Bluetooth)'"></button>
                             <button @click="toggleRemoteMonitoring()"
                                 :class="remoteMonitoringActive ? 'bg-red-500' : 'bg-green-600'"
                                 class="px-4 py-2 text-white rounded-lg font-semibold">
                                 <span
                                     x-text="remoteMonitoringActive ? t('monitoring.stop') : t('monitoring.start')"></span>
                             </button>
+                        </div>
+                        <div class="grid sm:grid-cols-3 gap-3 mb-4">
+                            <div class="p-3 rounded-xl bg-slate-50 border">
+                                <p class="text-xs text-gray-500">Pedometer</p>
+                                <p class="font-bold" :class="stepTrackingActive ? 'text-green-600' : 'text-gray-600'" x-text="stepTrackingActive ? 'Connected' : 'Disconnected'"></p>
+                            </div>
+                            <div class="p-3 rounded-xl bg-slate-50 border">
+                                <p class="text-xs text-gray-500">Heart Rate Device</p>
+                                <p class="font-bold" :class="heartRateConnected ? 'text-green-600' : 'text-gray-600'" x-text="heartRateConnected ? 'Connected' : 'Disconnected'"></p>
+                            </div>
+                            <div class="p-3 rounded-xl bg-slate-50 border">
+                                <p class="text-xs text-gray-500">BP Device</p>
+                                <p class="font-bold" :class="bpConnected ? 'text-green-600' : 'text-gray-600'" x-text="bpConnected ? 'Connected' : 'Disconnected'"></p>
+                            </div>
                         </div>
                         <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
                             <div class="p-4 bg-red-50 rounded-xl">
@@ -1231,7 +1263,7 @@
                 <!-- Family Members List -->
                 <div class="lg:col-span-2">
                     <h3 class="text-2xl font-bold mb-6 gradient-text">Members (<span
-                            x-text="familyMembers.length + 1"></span>)</h3>
+                            x-text="filteredFamilyMembers.length + 1"></span>)</h3>
 
                     <!-- Current User -->
                     <div
@@ -1258,7 +1290,7 @@
 
                     <!-- Family Members -->
                     <div class="space-y-4">
-                        <template x-for="member in familyMembers" :key="member.uid">
+                        <template x-for="member in filteredFamilyMembers" :key="member.uid">
                             <div class="bg-white rounded-2xl p-6 border-2 border-purple-200 premium-card list-item">
                                 <div class="flex justify-between items-start mb-4">
                                     <div class="flex gap-4 items-start flex-1">
@@ -1302,7 +1334,7 @@
                             </div>
                         </template>
 
-                        <template x-if="familyMembers.length === 0">
+                        <template x-if="filteredFamilyMembers.length === 0">
                             <div class="text-center py-8 bg-gray-50 rounded-2xl">
                                 <p class="text-gray-500 text-lg">No family members yet</p>
                                 <p class="text-sm text-gray-400">Share your code above to invite them</p>
@@ -1901,7 +1933,7 @@
                 profile: { displayName: '', email: '', age: '', region: '', condition: '' },
                 inviteUid: '',
                 familyMembers: [],
-                auth: { email: '', password: '', displayName: '' },
+                auth: { email: '', password: '', displayName: '', phone: '', otp: '', phoneVerified: false },
                 inAppReminders: [],
                 scheduledTimers: {},
                 notifPermissionText: 'Unknown',
@@ -1916,7 +1948,7 @@
                 viewingMemberStreak: 0,
                 viewingMemberStatus: 'Unknown',
                 installPrompt: null,
-                sidebarOpen: window.innerWidth >= 1024,
+                sidebarOpen: false,
                 notificationPanelOpen: false,
                 notificationLog: [],
                 settings: {
@@ -1930,6 +1962,16 @@
                 connectedDevices: [],
                 remoteMonitoringActive: false,
                 remoteMonitorTimer: null,
+                recaptchaVerifier: null,
+                phoneConfirmationResult: null,
+                stepTrackingActive: false,
+                heartRateConnected: false,
+                bpConnected: false,
+                motionWasHigh: false,
+                motionLastStepTs: 0,
+                motionHandler: null,
+                heartRateChar: null,
+                bpChar: null,
                 vitals: { heartRate: 76, bloodPressure: '120/80', spo2: 98, temperature: 36.8, steps: 1200, lastUpdated: '' },
                 vitalsHistory: [],
                 aiInsights: [],
@@ -2204,21 +2246,66 @@
                     setTimeout(applyChange, 900);
                 },
 
+                initRecaptcha() {
+                    if (this.recaptchaVerifier) return this.recaptchaVerifier;
+                    this.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+                        size: 'invisible'
+                    });
+                    return this.recaptchaVerifier;
+                },
+
+                async sendPhoneOtp() {
+                    if (!this.auth.phone) {
+                        alert('Enter phone number in international format (e.g. +91XXXXXXXXXX).');
+                        return;
+                    }
+                    try {
+                        const appVerifier = this.initRecaptcha();
+                        this.phoneConfirmationResult = await firebase.auth().signInWithPhoneNumber(this.auth.phone, appVerifier);
+                        alert('OTP sent to your phone.');
+                    } catch (e) {
+                        alert('Phone OTP send failed: ' + e.message);
+                    }
+                },
+
+                async verifyPhoneOtp() {
+                    if (!this.phoneConfirmationResult || !this.auth.otp) {
+                        alert('Send OTP first, then enter the code.');
+                        return;
+                    }
+                    try {
+                        await this.phoneConfirmationResult.confirm(this.auth.otp);
+                        this.auth.phoneVerified = true;
+                        await firebase.auth().signOut();
+                        alert('Phone verified successfully.');
+                    } catch (e) {
+                        alert('OTP verification failed: ' + e.message);
+                    }
+                },
+
                 saveSettings() {
                     localStorage.setItem('medigarden_settings', JSON.stringify(this.settings));
                 },
 
                 async signUp() {
                     try {
+                        if (this.auth.phone && !this.auth.phoneVerified) {
+                            alert('Verify phone with OTP or leave phone blank.');
+                            return;
+                        }
                         const res = await firebase.auth().createUserWithEmailAndPassword(this.auth.email, this.auth.password);
                         await res.user.updateProfile({ displayName: this.auth.displayName });
+                        await res.user.sendEmailVerification();
                         await firebase.database().ref(`users/${res.user.uid}/profile`).set({
                             displayName: this.auth.displayName,
                             email: this.auth.email,
+                            phone: this.auth.phone || '',
+                            phoneVerified: !!this.auth.phoneVerified,
                             createdAt: new Date().toISOString()
                         });
-                        this.auth = { email: '', password: '', displayName: '' };
-                        alert('Account created successfully! Please sign in.');
+                        await firebase.auth().signOut();
+                        this.auth = { email: '', password: '', displayName: '', phone: '', otp: '', phoneVerified: false };
+                        alert('Account created. Verification link sent to your email. Verify email, then sign in.');
                     } catch (e) {
                         alert('Sign up error: ' + e.message);
                     }
@@ -2226,7 +2313,13 @@
 
                 async signIn() {
                     try {
-                        await firebase.auth().signInWithEmailAndPassword(this.auth.email, this.auth.password);
+                        const cred = await firebase.auth().signInWithEmailAndPassword(this.auth.email, this.auth.password);
+                        if (cred.user && !cred.user.emailVerified) {
+                            await cred.user.sendEmailVerification();
+                            await firebase.auth().signOut();
+                            alert('Email not verified. We sent a new verification link.');
+                            return;
+                        }
                         this.auth.password = '';
                     } catch (e) {
                         alert('Sign in error: ' + e.message);
@@ -2250,6 +2343,11 @@
                             clearInterval(this.remoteMonitorTimer);
                             this.remoteMonitorTimer = null;
                         }
+                        if (this.motionHandler) {
+                            window.removeEventListener('devicemotion', this.motionHandler);
+                            this.motionHandler = null;
+                        }
+                        this.stepTrackingActive = false;
                         this.remoteMonitoringActive = false;
                         await firebase.auth().signOut();
                         this.isLoggedIn = false;
@@ -2463,10 +2561,118 @@
                     a.click();
                 },
 
-                connectDevice(deviceName) {
-                    if (this.connectedDevices.includes(deviceName)) return;
-                    this.connectedDevices.push(deviceName);
-                    alert(`${deviceName} connected.`);
+                parseSfloat16(raw) {
+                    let mantissa = raw & 0x0fff;
+                    let exponent = raw >> 12;
+                    if (mantissa >= 0x0800) mantissa = -(0x1000 - mantissa);
+                    if (exponent >= 0x0008) exponent = -(0x0010 - exponent);
+                    return mantissa * Math.pow(10, exponent);
+                },
+
+                async togglePedometerTracking() {
+                    if (this.stepTrackingActive) {
+                        if (this.motionHandler) window.removeEventListener('devicemotion', this.motionHandler);
+                        this.stepTrackingActive = false;
+                        return;
+                    }
+
+                    if (typeof DeviceMotionEvent === 'undefined') {
+                        alert('Device motion API not available on this device/browser.');
+                        return;
+                    }
+
+                    try {
+                        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                            const p = await DeviceMotionEvent.requestPermission();
+                            if (p !== 'granted') {
+                                alert('Motion permission denied.');
+                                return;
+                            }
+                        }
+                        this.motionHandler = (event) => {
+                            const acc = event.accelerationIncludingGravity || event.acceleration;
+                            if (!acc) return;
+                            const x = acc.x || 0, y = acc.y || 0, z = acc.z || 0;
+                            const mag = Math.sqrt(x * x + y * y + z * z);
+                            const now = Date.now();
+                            const high = mag > 12.2;
+                            const low = mag < 10.3;
+
+                            if (high && !this.motionWasHigh && (now - this.motionLastStepTs) > 300) {
+                                this.motionWasHigh = true;
+                            } else if (this.motionWasHigh && low) {
+                                this.motionWasHigh = false;
+                                this.motionLastStepTs = now;
+                                this.vitals.steps += 1;
+                                this.vitals.lastUpdated = new Date().toISOString();
+                                if (this.vitals.steps % 10 === 0) this.save();
+                            }
+                        };
+
+                        window.addEventListener('devicemotion', this.motionHandler, { passive: true });
+                        this.stepTrackingActive = true;
+                    } catch (e) {
+                        alert('Unable to start pedometer: ' + e.message);
+                    }
+                },
+
+                async connectHeartRateMonitor() {
+                    if (!navigator.bluetooth) {
+                        alert('Bluetooth not supported in this browser.');
+                        return;
+                    }
+                    try {
+                        const device = await navigator.bluetooth.requestDevice({
+                            filters: [{ services: ['heart_rate'] }]
+                        });
+                        const server = await device.gatt.connect();
+                        const service = await server.getPrimaryService('heart_rate');
+                        const characteristic = await service.getCharacteristic('heart_rate_measurement');
+                        await characteristic.startNotifications();
+                        characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                            const value = event.target.value;
+                            const flags = value.getUint8(0);
+                            const hr = (flags & 0x1) ? value.getUint16(1, true) : value.getUint8(1);
+                            this.vitals.heartRate = hr;
+                            this.vitals.lastUpdated = new Date().toISOString();
+                            this.heartRateConnected = true;
+                            this.save();
+                        });
+                        this.heartRateChar = characteristic;
+                        this.heartRateConnected = true;
+                    } catch (e) {
+                        alert('Heart rate device connection failed: ' + e.message);
+                    }
+                },
+
+                async connectBpMonitor() {
+                    if (!navigator.bluetooth) {
+                        alert('Bluetooth not supported in this browser.');
+                        return;
+                    }
+                    try {
+                        const device = await navigator.bluetooth.requestDevice({
+                            filters: [{ services: ['blood_pressure'] }]
+                        });
+                        const server = await device.gatt.connect();
+                        const service = await server.getPrimaryService('blood_pressure');
+                        const characteristic = await service.getCharacteristic('blood_pressure_measurement');
+                        await characteristic.startNotifications();
+                        characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                            const value = event.target.value;
+                            let idx = 1;
+                            const sys = this.parseSfloat16(value.getUint16(idx, true)); idx += 2;
+                            const dia = this.parseSfloat16(value.getUint16(idx, true));
+                            this.vitals.bloodPressure = `${Math.round(sys)}/${Math.round(dia)}`;
+                            this.vitals.lastUpdated = new Date().toISOString();
+                            this.bpConnected = true;
+                            this.save();
+                        });
+                        this.bpChar = characteristic;
+                        this.bpConnected = true;
+                    } catch (e) {
+                        alert('BP monitor connection failed: ' + e.message);
+                    }
                 },
 
                 toggleRemoteMonitoring() {
@@ -2486,11 +2692,11 @@
                     const sys = rand(108, 145);
                     const dia = rand(68, 95);
                     this.vitals = {
-                        heartRate: rand(58, 112),
-                        bloodPressure: `${sys}/${dia}`,
+                        heartRate: this.heartRateConnected ? this.vitals.heartRate : rand(58, 112),
+                        bloodPressure: this.bpConnected ? this.vitals.bloodPressure : `${sys}/${dia}`,
                         spo2: rand(92, 100),
                         temperature: (Math.round((36 + Math.random() * 2) * 10) / 10),
-                        steps: this.vitals.steps + rand(30, 220),
+                        steps: this.stepTrackingActive ? this.vitals.steps : this.vitals.steps + rand(30, 220),
                         lastUpdated: new Date().toISOString()
                     };
                     this.vitalsHistory.push({ ...this.vitals });
@@ -2972,6 +3178,11 @@
 
                 get analyticsByCondition() {
                     return this.aggregatePopulation('condition');
+                },
+
+                get filteredFamilyMembers() {
+                    if (this.relationshipFilter === 'all') return this.familyMembers;
+                    return this.familyMembers.filter(m => (m.relationship || '').toLowerCase() === this.relationshipFilter);
                 },
 
                 get populationMetrics() {
