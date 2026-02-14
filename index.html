@@ -616,6 +616,10 @@
             outline: 2px solid var(--brand);
             outline-offset: 2px;
         }
+
+        [x-cloak] {
+            display: none !important;
+        }
     </style>
 </head>
 
@@ -716,7 +720,8 @@
     <template x-if="isLoggedIn && currentPage !== 'login'">
         <div class="app-shell min-h-screen bg-gradient-to-b from-blue-50 to-green-50">
             <div class="app-layout">
-                <aside class="app-sidebar" :class="sidebarOpen ? 'open' : ''">
+                <aside x-cloak class="app-sidebar" :class="sidebarOpen ? 'open' : ''"
+                    :style="sidebarOpen ? 'transform: translateX(0)' : 'transform: translateX(-103%)'">
                     <div class="flex items-center gap-3 pb-2 border-b border-white/20">
                         <div class="brand-mark">MG</div>
                         <div>
@@ -739,7 +744,7 @@
                         <button @click="logout()" class="nav-btn bg-red-500/80 border-red-300/30 text-white"><span x-text="t('nav.logout')"></span><span>↩</span></button>
                     </div>
                 </aside>
-                <div x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 bg-black/30 z-[70] lg:hidden"></div>
+                <div x-cloak x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 bg-black/30 z-[70] lg:hidden"></div>
 
                 <div class="app-content-wrap">
                     <header class="app-topbar">
@@ -1636,6 +1641,12 @@
         </main>
     </template>
 
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
     <!-- Member Garden View Modal -->
     <template x-if="viewingMemberGarden">
         <div class="fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
@@ -1667,13 +1678,6 @@
             </div>
         </div>
     </template>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </template>
-
-    <div id="google_translate_element"></div>
 
     <div class="notif-drawer" x-show="notificationPanelOpen" x-transition>
         <div class="p-4 border-b flex items-center justify-between">
@@ -1919,16 +1923,6 @@
             const swUrl = URL.createObjectURL(swBlob);
             navigator.serviceWorker.register(swUrl).catch(e => console.log('SW Registration failed:', e));
         }
-    </script>
-
-    <script>
-        window.googleTranslateElementInit = function () {
-            if (!window.google || !window.google.translate) return;
-            new google.translate.TranslateElement({
-                pageLanguage: 'en',
-                autoDisplay: false
-            }, 'google_translate_element');
-        };
     </script>
 
     <script>
@@ -2206,10 +2200,10 @@
                     setInterval(() => this.checkDueReminders(), 60 * 1000);
                     this.updateNotifPermissionText();
                     this.loadSettings();
-                    document.cookie = 'googtrans=/en/en; path=/';
+                    document.cookie = 'googtrans=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+                    document.cookie = 'googtrans=/en/en;path=/';
                     this.$watch('settings.language', () => {
                         this.saveSettings();
-                        this.translateWholeApp();
                     });
                 },
 
@@ -2253,32 +2247,7 @@
                 },
 
                 translateWholeApp() {
-                    const target = this.settings.language || 'en';
-                    const cookieVal = target === 'en' ? '/en/en' : `/en/${target}`;
-                    document.cookie = `googtrans=${cookieVal}; path=/`;
-
-                    if (target === 'en') return;
-
-                    const applyChange = () => {
-                        const combo = document.querySelector('.goog-te-combo');
-                        if (!combo) return;
-                        combo.value = target;
-                        combo.dispatchEvent(new Event('change'));
-                    };
-
-                    if (window.google && window.google.translate) {
-                        setTimeout(applyChange, 180);
-                        return;
-                    }
-
-                    if (!document.getElementById('google-translate-script')) {
-                        const s = document.createElement('script');
-                        s.id = 'google-translate-script';
-                        s.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-                        document.body.appendChild(s);
-                    }
-
-                    setTimeout(applyChange, 900);
+                    return;
                 },
 
                 initRecaptcha() {
@@ -3273,4 +3242,3 @@
 </body>
 
 </html>
-
