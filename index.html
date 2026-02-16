@@ -624,6 +624,7 @@
 </head>
 
 <body x-data="app()" x-init="init()">
+    <div id="google_translate_element" aria-hidden="true"></div>
 
     <!-- Audio for notification sound -->
     <audio id="notificationSound" class="notification-sound">
@@ -690,19 +691,6 @@
                             <label class="text-sm font-semibold text-gray-700">Password</label>
                             <input x-model="auth.password" type="password" placeholder="••••••••"
                                 class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
-                        </div>
-                        <div class="border rounded-xl p-3 bg-slate-50">
-                            <label class="text-sm font-semibold text-gray-700">Phone (optional, OTP verification)</label>
-                            <input x-model="auth.phone" type="tel" placeholder="+91XXXXXXXXXX"
-                                class="w-full mt-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#2D9F75] focus:outline-none" />
-                            <div class="flex gap-2 mt-2">
-                                <input x-model="auth.otp" type="text" placeholder="OTP code"
-                                    class="flex-1 px-4 py-2 border-2 border-gray-200 rounded-lg" />
-                                <button @click="sendPhoneOtp()" type="button" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold">Send OTP</button>
-                                <button @click="verifyPhoneOtp()" type="button" class="px-3 py-2 bg-indigo-500 text-white rounded-lg text-sm font-bold">Verify</button>
-                            </div>
-                            <p class="text-xs mt-2" :class="auth.phoneVerified ? 'text-green-600' : 'text-gray-500'" x-text="auth.phoneVerified ? 'Phone verified.' : 'Verify phone or use email verification.'"></p>
-                            <div id="recaptcha-container" class="mt-2"></div>
                         </div>
                         <button @click="signUp()"
                             class="w-full bg-[#2D9F75] text-white py-3 rounded-lg font-bold hover:bg-[#258562] transition">Create
@@ -1922,6 +1910,21 @@
 
         firebase.initializeApp(firebaseConfig);
         const VAPID_PUBLIC_KEY = "REPLACE_WITH_FIREBASE_WEB_PUSH_CERTIFICATE_KEY";
+        window.googleTranslateElementInit = function () {
+            if (window.google && window.google.translate) {
+                new window.google.translate.TranslateElement(
+                    { pageLanguage: 'en', autoDisplay: false, includedLanguages: 'en,hi,ta' },
+                    'google_translate_element'
+                );
+            }
+        };
+        if (!window.__mgTranslateScriptLoaded) {
+            window.__mgTranslateScriptLoaded = true;
+            const gtScript = document.createElement('script');
+            gtScript.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+            gtScript.async = true;
+            document.head.appendChild(gtScript);
+        }
 
         function app() {
             return {
@@ -1945,7 +1948,7 @@
                 profile: { displayName: '', email: '', age: '', region: '', condition: '' },
                 inviteUid: '',
                 familyMembers: [],
-                auth: { email: '', password: '', displayName: '', phone: '', otp: '', phoneVerified: false },
+                auth: { email: '', password: '', displayName: '' },
                 inAppReminders: [],
                 scheduledTimers: {},
                 notifPermissionText: 'Unknown',
@@ -1977,8 +1980,6 @@
                 connectedDevices: [],
                 remoteMonitoringActive: false,
                 remoteMonitorTimer: null,
-                recaptchaVerifier: null,
-                phoneConfirmationResult: null,
                 stepTrackingActive: false,
                 heartRateConnected: false,
                 bpConnected: false,
@@ -2182,10 +2183,10 @@
                     setInterval(() => this.checkDueReminders(), 60 * 1000);
                     this.updateNotifPermissionText();
                     this.loadSettings();
-                    document.cookie = 'googtrans=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
-                    document.cookie = 'googtrans=/en/en;path=/';
-                    this.$watch('settings.language', () => {
+                    this.applyWholePageLanguage(this.settings.language);
+                    this.$watch('settings.language', (lang) => {
                         this.saveSettings();
+                        this.applyWholePageLanguage(lang);
                     });
                 },
 
@@ -2204,6 +2205,22 @@
                 loadSettings() {
                     const saved = localStorage.getItem('medigarden_settings');
                     if (saved) this.settings = { ...this.settings, ...JSON.parse(saved) };
+                },
+
+                applyWholePageLanguage(lang) {
+                    const selected = ['en', 'hi', 'ta'].includes(lang) ? lang : 'en';
+                    document.cookie = `googtrans=/en/${selected};path=/`;
+                    const applyCombo = () => {
+                        const combo = document.querySelector('.goog-te-combo');
+                        if (!combo) return false;
+                        combo.value = selected;
+                        combo.dispatchEvent(new Event('change'));
+                        return true;
+                    };
+                    if (!applyCombo()) {
+                        setTimeout(applyCombo, 300);
+                        setTimeout(applyCombo, 1200);
+                    }
                 },
 
                 toggleSidebar() {
@@ -2339,65 +2356,22 @@
                     return;
                 },
 
-                initRecaptcha() {
-                    if (this.recaptchaVerifier) return this.recaptchaVerifier;
-                    this.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-                        size: 'invisible'
-                    });
-                    return this.recaptchaVerifier;
-                },
-
-                async sendPhoneOtp() {
-                    if (!this.auth.phone) {
-                        alert('Enter phone number in international format (e.g. +91XXXXXXXXXX).');
-                        return;
-                    }
-                    try {
-                        const appVerifier = this.initRecaptcha();
-                        this.phoneConfirmationResult = await firebase.auth().signInWithPhoneNumber(this.auth.phone, appVerifier);
-                        alert('OTP sent to your phone.');
-                    } catch (e) {
-                        alert('Phone OTP send failed: ' + e.message);
-                    }
-                },
-
-                async verifyPhoneOtp() {
-                    if (!this.phoneConfirmationResult || !this.auth.otp) {
-                        alert('Send OTP first, then enter the code.');
-                        return;
-                    }
-                    try {
-                        await this.phoneConfirmationResult.confirm(this.auth.otp);
-                        this.auth.phoneVerified = true;
-                        await firebase.auth().signOut();
-                        alert('Phone verified successfully.');
-                    } catch (e) {
-                        alert('OTP verification failed: ' + e.message);
-                    }
-                },
-
                 saveSettings() {
                     localStorage.setItem('medigarden_settings', JSON.stringify(this.settings));
                 },
 
                 async signUp() {
                     try {
-                        if (this.auth.phone && !this.auth.phoneVerified) {
-                            alert('Verify phone with OTP or leave phone blank.');
-                            return;
-                        }
                         const res = await firebase.auth().createUserWithEmailAndPassword(this.auth.email, this.auth.password);
                         await res.user.updateProfile({ displayName: this.auth.displayName });
                         await res.user.sendEmailVerification();
                         await firebase.database().ref(`users/${res.user.uid}/profile`).set({
                             displayName: this.auth.displayName,
                             email: this.auth.email,
-                            phone: this.auth.phone || '',
-                            phoneVerified: !!this.auth.phoneVerified,
                             createdAt: new Date().toISOString()
                         });
                         await firebase.auth().signOut();
-                        this.auth = { email: '', password: '', displayName: '', phone: '', otp: '', phoneVerified: false };
+                        this.auth = { email: '', password: '', displayName: '' };
                         alert('Account created. Verification link sent to your email. Verify email, then sign in.');
                     } catch (e) {
                         alert('Sign up error: ' + e.message);
